@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: songwriting
+    runtime: docker
+    plan: free
+    branch: main
+    envVars:
+      - key: MONGODB_URI
+        sync: false
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "5001"
+    healthCheckPath: /api/health
