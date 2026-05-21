@@ -82,7 +82,7 @@ export const Notepad: React.FC<NotepadProps> = ({
           value={title}
           onChange={(e) => updateActiveDraft({ title: e.target.value })}
           placeholder="Enter Destination Title (e.g., ...Baby One More Time)"
-          className="flex-1 bg-transparent text-sm font-serif font-bold text-ink placeholder-ink-light/70 focus:outline-none py-0.5 border-b border-transparent hover:border-paper-darker focus:border-terracotta transition"
+          className="flex-1 bg-transparent text-sm font-serif font-bold text-ink placeholder-ink-light/70 focus:outline-none py-0.5 border-b border-transparent focus:border-terracotta transition"
         />
       </div>
 
@@ -175,7 +175,7 @@ export const Notepad: React.FC<NotepadProps> = ({
             onScroll={handleScroll}
             onMouseUp={handleTextSelection}
             onKeyUp={handleTextSelection}
-            placeholder={`[Verse 1]&#10;Write your lines here...&#10;&#10;[Chorus]&#10;Keep them simple, conversational, and writeable in one breath.`}
+            placeholder="Write your lyrics here..."
             className="w-full h-full bg-transparent text-ink placeholder-ink-light/50 font-serif text-[17px] leading-[32px] py-6 px-8 resize-none focus:outline-none whitespace-pre overflow-x-auto overflow-y-auto block border-0"
             style={{
               lineHeight: '32px',

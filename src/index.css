@@ -35,3 +35,10 @@ input, textarea, [contenteditable="true"] {
   outline: 2px solid #C2593F;
   outline-offset: 1px;
 }
+
+input:focus-visible,
+textarea:focus-visible,
+[contenteditable="true"]:focus-visible {
+  outline: none;
+}
+
