@@ -82,7 +82,7 @@ export const MobileLayout: React.FC<MobileLayoutProps> = ({
   ];
 
   return (
-    <div className="w-screen h-dvh flex flex-col bg-paper text-ink font-sans select-none overflow-hidden">
+    <div className="w-screen h-dvh flex flex-col bg-paper text-ink font-sans select-none overflow-hidden" style={{ height: '100dvh' }}>
 
       {/* ── Mobile Header ── */}
       <header className={`h-12 w-full bg-paper-dark border-b border-paper-darker flex items-center justify-between px-4 flex-shrink-0 transition-opacity duration-500 ${
@@ -259,9 +259,9 @@ export const MobileLayout: React.FC<MobileLayoutProps> = ({
       </main>
 
       {/* ── Bottom Navigation Bar ── */}
-      <nav className={`h-16 w-full bg-paper-dark border-t border-paper-darker flex items-stretch flex-shrink-0 transition-opacity duration-500 ${
+      <nav className={`h-16 w-full bg-paper-dark border-t border-paper-darker flex items-stretch flex-shrink-0 transition-opacity duration-500 pb-safe-bottom ${
         subconsciousActive ? 'opacity-10 pointer-events-none' : ''
-      }`}>
+      }`} style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
         {tabs.map(({ id, label, Icon }) => {
           const isActive = activeTab === id;
           return (

@@ -11,6 +11,7 @@ interface HighlightingTextareaProps {
   className?: string;
   style?: React.CSSProperties;
   subconsciousActive?: boolean;
+  isMobile?: boolean;
   onFocus?: () => void;
   onBlur?: () => void;
   onKeyDown?: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
@@ -35,6 +36,7 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
   className,
   style,
   subconsciousActive,
+  isMobile,
   onFocus,
   onBlur,
   onKeyDown,
@@ -171,12 +173,13 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
       {/* 1. Synced Highlight Overlay (behind or in front with pointer-events-none) */}
       <div
         ref={overlayRef}
-        className={`absolute inset-0 w-full h-full select-none pointer-events-none whitespace-pre overflow-x-auto overflow-y-auto block border-0 leading-[32px] py-6 px-8 font-serif text-[17px] ${
+        className={`absolute inset-0 w-full h-full select-none pointer-events-none whitespace-pre-wrap break-words overflow-x-hidden overflow-y-auto block border-0 leading-[32px] ${isMobile ? 'py-4 px-4 text-[15px]' : 'py-6 px-8 text-[17px]'} font-serif ${
           subconsciousActive ? 'subconscious-blind-mode text-transparent' : 'text-transparent'
         }`}
         style={{
           lineHeight: '32px',
           fontFeatureSettings: '"kern" 1, "liga" 1',
+          maxWidth: '100%',
           ...style,
         }}
       >
@@ -196,12 +199,15 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
         onKeyUp={onKeyUp}
         onSelect={onSelect}
         placeholder={placeholder}
-        className={`w-full h-full bg-transparent text-ink placeholder-ink-light/50 font-serif text-[17px] leading-[32px] py-6 px-8 resize-none focus:outline-none whitespace-pre overflow-x-auto overflow-y-auto block border-0 relative z-10 ${
+        className={`w-full h-full bg-transparent text-ink placeholder-ink-light/50 font-serif leading-[32px] resize-none focus:outline-none whitespace-pre-wrap break-words overflow-x-hidden overflow-y-auto block border-0 relative z-10 ${
+          isMobile ? 'py-4 px-4 text-[15px]' : 'py-6 px-8 text-[17px]'
+        } ${
           subconsciousActive ? 'subconscious-blind-mode caret-transparent' : 'caret-terracotta'
         } ${className || ''}`}
         style={{
           lineHeight: '32px',
           fontFeatureSettings: '"kern" 1, "liga" 1',
+          maxWidth: '100%',
           background: 'transparent',
           color: subconsciousActive ? 'transparent' : 'currentColor',
           WebkitTextFillColor: subconsciousActive ? 'transparent' : 'currentColor',

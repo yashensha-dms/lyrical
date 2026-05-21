@@ -295,25 +295,26 @@ export const Notepad: React.FC<NotepadProps> = ({
     <div className="flex-1 h-full bg-paper flex flex-col min-w-0" onClick={focusEditor}>
       {/* Subconscious & Share Mode Control */}
       <div
-        className="px-8 py-3 bg-paper border-b border-paper-darker flex items-center justify-end gap-4 select-none flex-shrink-0 relative"
+        className={`${isMobile ? 'px-4 py-2' : 'px-8 py-3'} bg-paper border-b border-paper-darker flex items-center justify-end gap-4 select-none flex-shrink-0 relative`}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center gap-2 flex-1">
-          <input
-            type="text"
-            value={title}
-            onChange={(e) => updateActiveDraft({ title: e.target.value })}
-            onFocus={() => setIsEditorFocused(true)}
-            onBlur={() => setIsEditorFocused(false)}
-            placeholder="Enter Destination Title (e.g., ...Baby One More Time)"
-            className="flex-1 bg-transparent text-sm font-bold text-ink placeholder-ink-light/70 focus:outline-none py-0.5 border-b border-transparent focus:border-terracotta transition"
-            style={{ fontSize: isMobile ? '16px' : undefined }}
-            disabled={subconsciousActive}
-          />
-        </div>
+        {!isMobile && (
+          <div className="flex items-center gap-2 flex-1">
+            <input
+              type="text"
+              value={title}
+              onChange={(e) => updateActiveDraft({ title: e.target.value })}
+              onFocus={() => setIsEditorFocused(true)}
+              onBlur={() => setIsEditorFocused(false)}
+              placeholder="Enter Destination Title (e.g., ...Baby One More Time)"
+              className="flex-1 bg-transparent text-sm font-bold text-ink placeholder-ink-light/70 focus:outline-none py-0.5 border-b border-transparent focus:border-terracotta transition"
+              disabled={subconsciousActive}
+            />
+          </div>
+        )}
 
         {/* Subconscious & Share Mode Control */}
-        <div className="flex items-center gap-2 relative">
+        <div className="flex items-center gap-2 relative w-full justify-end">
           {/* Share Button (Only in Cloud Mode) */}
           {isCloudMode && (
             <button
@@ -516,6 +517,7 @@ export const Notepad: React.FC<NotepadProps> = ({
             onSelect={handleSelect}
             placeholder={subconsciousActive ? "Keep typing, don't stop, don't look back..." : "Write your lyrics here..."}
             subconsciousActive={subconsciousActive}
+            isMobile={isMobile}
           />
         </div>
       </div>
