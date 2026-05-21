@@ -84,6 +84,31 @@ app.get('/api/drafts', requireDb, async (req, res) => {
   }
 });
 
+// 1.5. Get a single draft by ID
+app.get('/api/drafts/:id', requireDb, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const draft = await DraftModel.findById(id);
+    if (!draft) {
+      return res.status(404).json({ error: 'Draft not found' });
+    }
+    const audioMemo = await AudioMemoModel.findOne({ draftId: id }, 'draftId');
+    res.json({
+      id: draft._id,
+      title: draft.title,
+      content: draft.content,
+      scrapbook: draft.scrapbook,
+      targetTemplate: draft.targetTemplate,
+      syllableTolerance: draft.syllableTolerance ?? 1,
+      hasAudio: !!audioMemo,
+      createdAt: draft.createdAt.toISOString(),
+      updatedAt: draft.updatedAt.toISOString(),
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // 2. Create a new draft
 app.post('/api/drafts', requireDb, async (req, res) => {
   const { id, title, content, scrapbook, targetTemplate, syllableTolerance } = req.body;

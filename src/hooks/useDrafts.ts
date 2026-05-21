@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { getLocalDrafts, saveLocalDraft, deleteLocalDraft, getLocalAudio } from '../utils/indexedDb';
 
 export interface Draft {
@@ -53,6 +53,20 @@ export function useDrafts() {
     return localStorage.getItem('lyrical_use_local_mode') === 'true';
   });
 
+  const [remoteDraft, setRemoteDraft] = useState<Draft | null>(null);
+  const [isEditorFocused, setIsEditorFocused] = useState(false);
+
+  const draftsRef = useRef(drafts);
+  const isEditorFocusedRef = useRef(isEditorFocused);
+
+  useEffect(() => {
+    draftsRef.current = drafts;
+  }, [drafts]);
+
+  useEffect(() => {
+    isEditorFocusedRef.current = isEditorFocused;
+  }, [isEditorFocused]);
+
   const isCloudMode = healthStatus === 'connected' && !useLocalMode;
 
   // Save local mode state to storage
@@ -96,13 +110,14 @@ export function useDrafts() {
     }
 
     const cloudActive = dbConnected && !useLocalMode;
+    let loaded: Draft[] = [];
 
     if (cloudActive) {
       try {
         const res = await fetch('/api/drafts');
         if (res.ok) {
           const data = await res.json();
-          const loaded: Draft[] = data.map((d: any) => ({
+          loaded = data.map((d: any) => ({
             id: d.id,
             title: d.title,
             content: d.content,
@@ -113,24 +128,13 @@ export function useDrafts() {
             createdAt: Date.parse(d.createdAt) || Date.now(),
             updatedAt: Date.parse(d.updatedAt) || Date.now()
           }));
-          
-          setDrafts(loaded);
-          
-          const savedActive = localStorage.getItem(ACTIVE_DRAFT_KEY);
-          if (savedActive && loaded.some(d => d.id === savedActive)) {
-            setActiveDraftId(savedActive);
-          } else if (loaded.length > 0) {
-            setActiveDraftId(loaded[0].id);
-          } else {
-            setActiveDraftId(null);
-          }
         } else {
           throw new Error('Failed to fetch drafts from server');
         }
       } catch (e) {
         console.error('Failed to load drafts from server, falling back to local database', e);
         const local = await getLocalDrafts();
-        const mappedLocal: Draft[] = local.map(d => ({
+        loaded = local.map(d => ({
           id: d.id,
           title: d.title,
           content: d.content,
@@ -141,13 +145,12 @@ export function useDrafts() {
           createdAt: Date.parse(d.createdAt) || Date.now(),
           updatedAt: d.updatedAt ? Date.parse(d.updatedAt) : Date.now()
         }));
-        setDrafts(mappedLocal.length > 0 ? mappedLocal : DEFAULT_DRAFTS);
+        if (loaded.length === 0) loaded = DEFAULT_DRAFTS;
       }
     } else {
       // Local Database (IndexedDB)
       try {
         const local = await getLocalDrafts();
-        let loaded: Draft[] = [];
         if (local.length === 0) {
           // Seed IndexedDB with the default draft
           for (const d of DEFAULT_DRAFTS) {
@@ -177,21 +180,84 @@ export function useDrafts() {
             updatedAt: d.updatedAt ? Date.parse(d.updatedAt) : Date.now()
           }));
         }
-        setDrafts(loaded);
-        
-        const savedActive = localStorage.getItem(ACTIVE_DRAFT_KEY);
-        if (savedActive && loaded.some(d => d.id === savedActive)) {
-          setActiveDraftId(savedActive);
-        } else if (loaded.length > 0) {
-          setActiveDraftId(loaded[0].id);
-        } else {
-          setActiveDraftId(null);
-        }
       } catch (e) {
         console.error('IndexedDB load failed', e);
-        setDrafts(DEFAULT_DRAFTS);
+        loaded = DEFAULT_DRAFTS;
       }
     }
+
+    // Check for ?share=ID query parameter
+    const urlParams = new URLSearchParams(window.location.search);
+    const shareId = urlParams.get('share');
+    let sharedDraftToSelect: string | null = null;
+
+    if (shareId) {
+      try {
+        const res = await fetch(`/api/drafts/${shareId}`);
+        if (res.ok) {
+          const d = await res.json();
+          const sharedDraft: Draft = {
+            id: d.id,
+            title: d.title,
+            content: d.content,
+            targetTemplate: d.targetTemplate,
+            scrapbook: d.scrapbook,
+            hasAudio: d.hasAudio || false,
+            syllableTolerance: d.syllableTolerance ?? 1,
+            createdAt: Date.parse(d.createdAt) || Date.now(),
+            updatedAt: Date.parse(d.updatedAt) || Date.now()
+          };
+
+          // Save imported shared draft into IndexedDB
+          await saveLocalDraft({
+            id: sharedDraft.id,
+            title: sharedDraft.title,
+            content: sharedDraft.content,
+            scrapbook: sharedDraft.scrapbook,
+            targetTemplate: sharedDraft.targetTemplate,
+            hasAudio: sharedDraft.hasAudio,
+            syllableTolerance: sharedDraft.syllableTolerance,
+            createdAt: new Date(sharedDraft.createdAt).toISOString(),
+            updatedAt: new Date(sharedDraft.updatedAt).toISOString()
+          });
+
+          // Insert or replace in loaded list
+          const existingIdx = loaded.findIndex(x => x.id === sharedDraft.id);
+          if (existingIdx > -1) {
+            loaded[existingIdx] = sharedDraft;
+          } else {
+            loaded = [sharedDraft, ...loaded];
+          }
+          sharedDraftToSelect = sharedDraft.id;
+        }
+      } catch (e) {
+        console.error('Failed to import shared draft on load:', e);
+      }
+
+      // Clean the URL query param
+      try {
+        const newUrl = window.location.pathname;
+        window.history.replaceState({}, document.title, newUrl);
+      } catch (e) {
+        console.error('Failed to clean URL:', e);
+      }
+    }
+
+    setDrafts(loaded);
+
+    if (sharedDraftToSelect) {
+      setActiveDraftId(sharedDraftToSelect);
+    } else {
+      const savedActive = localStorage.getItem(ACTIVE_DRAFT_KEY);
+      if (savedActive && loaded.some(d => d.id === savedActive)) {
+        setActiveDraftId(savedActive);
+      } else if (loaded.length > 0) {
+        setActiveDraftId(loaded[0].id);
+      } else {
+        setActiveDraftId(null);
+      }
+    }
+
     setIsSaving(false);
   }, [useLocalMode]);
 
@@ -479,6 +545,106 @@ export function useDrafts() {
     return false;
   }, [isCloudMode]);
 
+  const syncActiveDraftWithRemote = useCallback(async () => {
+    if (!remoteDraft) return;
+
+    setDrafts(prev =>
+      prev.map(d =>
+        d.id === remoteDraft.id ? remoteDraft : d
+      )
+    );
+
+    await saveLocalDraft({
+      id: remoteDraft.id,
+      title: remoteDraft.title,
+      content: remoteDraft.content,
+      scrapbook: remoteDraft.scrapbook,
+      targetTemplate: remoteDraft.targetTemplate,
+      hasAudio: remoteDraft.hasAudio,
+      syllableTolerance: remoteDraft.syllableTolerance,
+      createdAt: new Date(remoteDraft.createdAt).toISOString(),
+      updatedAt: new Date(remoteDraft.updatedAt).toISOString()
+    });
+
+    setRemoteDraft(null);
+  }, [remoteDraft]);
+
+  // Polling for collaborator updates
+  useEffect(() => {
+    if (!isCloudMode || !activeDraftId) {
+      setRemoteDraft(null);
+      return;
+    }
+
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/drafts/${activeDraftId}`);
+        if (!res.ok) return;
+        const d = await res.json();
+        
+        // Find current draft state from ref
+        const localDraft = draftsRef.current.find(x => x.id === activeDraftId);
+        if (!localDraft) return;
+
+        const serverDraft: Draft = {
+          id: d.id,
+          title: d.title,
+          content: d.content,
+          targetTemplate: d.targetTemplate,
+          scrapbook: d.scrapbook,
+          hasAudio: d.hasAudio || false,
+          syllableTolerance: d.syllableTolerance ?? 1,
+          createdAt: Date.parse(d.createdAt) || Date.now(),
+          updatedAt: Date.parse(d.updatedAt) || Date.now()
+        };
+
+        // Check if server version is different
+        const isDifferent =
+          serverDraft.title !== localDraft.title ||
+          serverDraft.content !== localDraft.content ||
+          serverDraft.scrapbook !== localDraft.scrapbook ||
+          serverDraft.targetTemplate !== localDraft.targetTemplate ||
+          serverDraft.syllableTolerance !== localDraft.syllableTolerance;
+
+        if (isDifferent && serverDraft.updatedAt > localDraft.updatedAt + 1000) {
+          if (isEditorFocusedRef.current) {
+            setRemoteDraft(serverDraft);
+          } else {
+            // Auto sync
+            setDrafts(prev =>
+              prev.map(x => x.id === serverDraft.id ? serverDraft : x)
+            );
+            await saveLocalDraft({
+              id: serverDraft.id,
+              title: serverDraft.title,
+              content: serverDraft.content,
+              scrapbook: serverDraft.scrapbook,
+              targetTemplate: serverDraft.targetTemplate,
+              hasAudio: serverDraft.hasAudio,
+              syllableTolerance: serverDraft.syllableTolerance,
+              createdAt: new Date(serverDraft.createdAt).toISOString(),
+              updatedAt: new Date(serverDraft.updatedAt).toISOString()
+            });
+            setRemoteDraft(null);
+          }
+        } else if (!isDifferent) {
+          setRemoteDraft(null);
+        }
+      } catch (e) {
+        console.error('Failed to poll draft status:', e);
+      }
+    }, 4000);
+
+    return () => clearInterval(interval);
+  }, [isCloudMode, activeDraftId]);
+
+  // Auto-sync when editor is blurred and we have a pending remote update
+  useEffect(() => {
+    if (!isEditorFocused && remoteDraft) {
+      syncActiveDraftWithRemote();
+    }
+  }, [isEditorFocused, remoteDraft, syncActiveDraftWithRemote]);
+
   return {
     drafts,
     activeDraft,
@@ -487,6 +653,10 @@ export function useDrafts() {
     healthStatus,
     useLocalMode,
     isCloudMode,
+    remoteDraft,
+    isEditorFocused,
+    setIsEditorFocused,
+    syncActiveDraftWithRemote,
     setUseLocalMode,
     checkHealth,
     selectDraft,

@@ -15,6 +15,9 @@ function App() {
     healthStatus,
     useLocalMode,
     isCloudMode,
+    remoteDraft,
+    setIsEditorFocused,
+    syncActiveDraftWithRemote,
     setUseLocalMode,
     selectDraft,
     createDraft,
@@ -143,12 +146,17 @@ function App() {
         {/* 3. Central Notepad Writing Canvas */}
         {activeDraft ? (
           <Notepad
+            draftId={activeDraft.id}
             title={activeDraft.title}
             content={activeDraft.content}
             targetTemplate={activeDraft.targetTemplate}
             syllableTolerance={activeDraft.syllableTolerance ?? 1}
             updateActiveDraft={updateActiveDraft}
             setSelectedWord={setSelectedWord}
+            remoteDraft={remoteDraft}
+            setIsEditorFocused={setIsEditorFocused}
+            syncActiveDraftWithRemote={syncActiveDraftWithRemote}
+            isCloudMode={isCloudMode}
           />
         ) : (
           <div className="flex-1 h-full bg-paper flex flex-col items-center justify-center text-ink-light select-none">
