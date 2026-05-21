@@ -261,6 +261,7 @@ export function useDrafts() {
     activeDraft?.scrapbook,
     activeDraft?.targetTemplate,
     activeDraft?.syllableTolerance,
+    activeDraft?.hasAudio,
     isCloudMode
   ]);
 
