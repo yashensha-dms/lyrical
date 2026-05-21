@@ -26,5 +26,3 @@ This document maps the proposed MXM Songwriter's Notepad UX suggestions against 
 | Feature Name | Origin / Inspiration | Reason / Current Status |
 | :--- | :--- | :--- |
 | **Scrollable Word & Title Bank** | Taylor Swift | **Not Implemented**. Sidebar currently only has Explorer, Scrapbook, Memos, and Settings. No dedicated vocabulary bank exists. |
-| **The "Dare to Suck" Lyric Graveyard** | Max Martin / Ed Sheeran | **Not Implemented**. No bottom drawer or sidebar panel to store deleted lines and cut text blocks. |
-| **2-Second Catchiness Tester** | Denniz Pop | **Not Implemented**. No quick-play button on voice memos that plays only the first two seconds of a melody recording. |
