@@ -42,6 +42,10 @@ This plan maps implemented features from **v1.0** and **v2.0** alongside future 
 #### Improvements
 * **"Anti-Thesaurus" Phrasing Simplifier (Emily Warren / Cara DioGuardi):** Scans lyrics in real-time. Highlights formal, complex, or multi-syllable (4+) words in the Right Panel and suggests simpler pop-friendly replacements. Click to instantly replace inside the notepad.
 
+### v2.5.0 (Conversational Phrase Catcher)
+#### Improvements
+* **Conversational Phrase Catcher (Justin Tranter / Cara DioGuardi):** Collapsible panel at the bottom of the Songs explorer list to log overheard phrases, ideas, and casual dialogue. Persistent in `localStorage`. Offers quick actions to start new songs, append to active scrapbook, copy to clipboard, or delete.
+
 ---
 
 ## Suggested Features (From Personas)
@@ -49,9 +53,3 @@ This plan maps implemented features from **v1.0** and **v2.0** alongside future 
 ### Major Features
 * **The "Dare to Suck" Lyric Graveyard (Max Martin / Ed Sheeran):**
   * *Description:* A non-destructive edit vault. Removed lines and cut text blocks are pushed into a bottom drawer or sidebar panel so writers never feel the pressure of permanent deletion.
-
-### Improvements
-* **Conversational Phrase Catcher (Justin Tranter / Cara DioGuardi):**
-  * *Description:* Floating prompt widget or quick input drawer in the Songs list to log overhearings, casual remarks, and song-starting title phrases.
-* **2-Second Catchiness Tester (Denniz Pop):**
-  * *Description:* Quick-play button on voice memos that plays only the first two seconds of a melody recording to test immediate hooks.

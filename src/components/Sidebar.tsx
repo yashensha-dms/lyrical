@@ -1,7 +1,13 @@
-import React, { useState } from 'react';
-import { Plus, Trash2, Search, FileDown, FileUp, ChevronLeft, Mic } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Plus, Trash2, Search, FileDown, FileUp, ChevronLeft, Mic, Copy, PlusCircle, FileText, ChevronDown, ChevronUp, Quote } from 'lucide-react';
 import type { Draft } from '../hooks/useDrafts';
 import { AudioDemoArea } from './AudioDemoArea';
+
+interface Phrase {
+  id: string;
+  text: string;
+  createdAt: number;
+}
 
 interface SidebarProps {
   activePanel: 'explorer' | 'scrapbook' | 'audio' | 'settings';
@@ -34,6 +40,72 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [tempTitle, setTempTitle] = useState('');
 
+  // Phrase Catcher state
+  const [phrases, setPhrases] = useState<Phrase[]>([]);
+  const [newPhraseText, setNewPhraseText] = useState('');
+  const [isPhraseCatcherOpen, setIsPhraseCatcherOpen] = useState(true);
+
+  // Load phrases from localStorage on mount
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('lyrical_caught_phrases');
+      if (stored) {
+        setPhrases(JSON.parse(stored));
+      }
+    } catch (e) {
+      console.error('Failed to load caught phrases', e);
+    }
+  }, []);
+
+  // Save phrases to localStorage helper
+  const savePhrases = (newPhrases: Phrase[]) => {
+    setPhrases(newPhrases);
+    try {
+      localStorage.setItem('lyrical_caught_phrases', JSON.stringify(newPhrases));
+    } catch (e) {
+      console.error('Failed to save caught phrases', e);
+    }
+  };
+
+  const handleAddPhrase = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newPhraseText.trim()) return;
+
+    const newPhrase: Phrase = {
+      id: `phrase-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      text: newPhraseText.trim(),
+      createdAt: Date.now(),
+    };
+
+    savePhrases([newPhrase, ...phrases]);
+    newPhraseText.trim();
+    setNewPhraseText('');
+  };
+
+  const handleDeletePhrase = (id: string) => {
+    savePhrases(phrases.filter(p => p.id !== id));
+  };
+
+  const handleCopyPhrase = (text: string) => {
+    navigator.clipboard.writeText(text);
+  };
+
+  const handleAddToScrapbook = (text: string) => {
+    if (!activeDraft) {
+      alert('Open a song first to add this phrase to its scrapbook.');
+      return;
+    }
+    const currentScrapbook = activeDraft.scrapbook || '';
+    const delimiter = currentScrapbook ? '\n' : '';
+    updateActiveDraft({
+      scrapbook: `${currentScrapbook}${delimiter}- Overheard/Idea: "${text}"`,
+    });
+  };
+
+  const handleCreateSongFromPhrase = (text: string) => {
+    createDraft(text);
+  };
+
   // Handle draft title edit inline
   const startRename = (id: string, currentTitle: string) => {
     setEditingId(id);
@@ -44,9 +116,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
     if (tempTitle.trim()) {
       if (activeDraft && activeDraft.id === id) {
         updateActiveDraft({ title: tempTitle.trim() });
-      } else {
-        // Fallback for non-active rename (though normally they rename selected)
-        // Set it directly in drafts, but hook handles active update easily.
       }
     }
     setEditingId(null);
@@ -186,6 +255,112 @@ export const Sidebar: React.FC<SidebarProps> = ({
               })
             )}
           </div>
+
+          {/* Phrase Catcher Collapsible Drawer */}
+          <div className="border-t border-paper-darker flex flex-col bg-paper-dark/20 flex-shrink-0">
+            {/* Header */}
+            <div
+              onClick={() => setIsPhraseCatcherOpen(!isPhraseCatcherOpen)}
+              className="flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-paper-dark/40 transition select-none"
+            >
+              <div className="flex items-center gap-1.5">
+                <Quote className="w-3.5 h-3.5 text-terracotta" />
+                <span className="text-[10px] font-semibold tracking-wider text-ink uppercase">
+                  Phrase Catcher
+                </span>
+                {phrases.length > 0 && (
+                  <span className="bg-terracotta text-white text-[9px] font-bold px-1.5 py-0.2 rounded-full leading-none">
+                    {phrases.length}
+                  </span>
+                )}
+              </div>
+              <button className="text-ink-muted">
+                {isPhraseCatcherOpen ? (
+                  <ChevronDown className="w-3.5 h-3.5" />
+                ) : (
+                  <ChevronUp className="w-3.5 h-3.5" />
+                )}
+              </button>
+            </div>
+
+            {/* Content Drawer */}
+            {isPhraseCatcherOpen && (
+              <div className="p-3 border-t border-paper-darker space-y-2 flex flex-col max-h-56">
+                <form onSubmit={handleAddPhrase} className="flex gap-1.5">
+                  <input
+                    type="text"
+                    placeholder="Overheard phrase..."
+                    value={newPhraseText}
+                    onChange={(e) => setNewPhraseText(e.target.value)}
+                    className="flex-1 bg-paper border border-paper-darker rounded px-2 py-1 text-xs text-ink placeholder-ink-light focus:outline-none focus:border-terracotta transition"
+                  />
+                  <button
+                    type="submit"
+                    className="bg-paper border border-paper-darker hover:bg-paper-darker text-ink text-xs px-2 py-1 rounded cursor-pointer transition shadow-paper-sm flex-shrink-0"
+                    title="Catch Phrase"
+                  >
+                    Catch
+                  </button>
+                </form>
+
+                {/* Caught list */}
+                <div className="flex-1 overflow-y-auto space-y-1.5 pr-0.5 select-text min-h-[60px]">
+                  {phrases.length === 0 ? (
+                    <div className="text-center py-4 text-[10px] text-ink-light select-none italic leading-relaxed">
+                      No phrases logged yet.<br />Save overheard dialogue here!
+                    </div>
+                  ) : (
+                    phrases.map((phrase) => (
+                      <div
+                        key={phrase.id}
+                        className="group flex flex-col bg-paper border border-paper-darker rounded p-2 transition hover:border-terracotta"
+                      >
+                        <p className="text-xs font-serif italic text-ink leading-normal mb-1 break-words">
+                          "{phrase.text}"
+                        </p>
+                        
+                        <div className="flex items-center justify-between select-none">
+                          <span className="text-[8px] text-ink-light font-mono">
+                            {new Date(phrase.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                          <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition duration-150">
+                            <button
+                              onClick={() => handleCreateSongFromPhrase(phrase.text)}
+                              className="text-ink-light hover:text-terracotta p-0.5 rounded cursor-pointer"
+                              title="Create Song from Phrase"
+                            >
+                              <PlusCircle className="w-3 h-3" />
+                            </button>
+                            <button
+                              onClick={() => handleAddToScrapbook(phrase.text)}
+                              className="text-ink-light hover:text-terracotta p-0.5 rounded cursor-pointer"
+                              title="Add to Scrapbook"
+                            >
+                              <FileText className="w-3 h-3" />
+                            </button>
+                            <button
+                              onClick={() => handleCopyPhrase(phrase.text)}
+                              className="text-ink-light hover:text-terracotta p-0.5 rounded cursor-pointer"
+                              title="Copy to Clipboard"
+                            >
+                              <Copy className="w-3 h-3" />
+                            </button>
+                            <button
+                              onClick={() => handleDeletePhrase(phrase.id)}
+                              className="text-ink-light hover:text-terracotta p-0.5 rounded cursor-pointer"
+                              title="Delete"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -272,7 +447,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
           
           <div className="text-[10px] text-ink-light text-center">
-            Songwriter's Workspace v2.4.0
+            Songwriter's Workspace v2.5.0
           </div>
         </div>
       )}
