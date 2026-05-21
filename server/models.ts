@@ -19,16 +19,20 @@ export interface IAudioMemo {
   createdAt: Date;
 }
 
-const AudioMemoSchema = new Schema<IAudioMemo>({
-  draftId: { type: String, required: true },
-  audioData: { type: String, required: true },
-  mimeType: { type: String, required: true },
-  duration: { type: Number, required: true },
-  createdAt: { type: Date, default: Date.now }
+const DraftSchema = new Schema<IDraft>({
+  _id: { type: String, required: true },
+  title: { type: String, default: '' },
+  content: { type: String, default: '' },
+  scrapbook: { type: String, default: '' },
+  targetTemplate: { type: String, default: '' },
+  syllableTolerance: { type: Number, default: 1 },
+}, {
+  timestamps: true,
+  _id: false
 });
 
 const AudioMemoSchema = new Schema<IAudioMemo>({
-  draftId: { type: String, required: true, unique: true },
+  draftId: { type: String, required: true },
   audioData: { type: String, required: true },
   mimeType: { type: String, required: true },
   duration: { type: Number, required: true },
