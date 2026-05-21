@@ -38,6 +38,10 @@ This plan maps implemented features from **v1.0** and **v2.0** alongside future 
 #### Major Features
 * **Shared co-writing link sharing (Jack Antonoff):** Collaborative online workspace sharing. Generates unique share links (?share=ID) allowing co-writers to edit/view same lyrics sheet. Background polling every 4 seconds auto-merges remote updates on editor blur, or prompts manual sync conflict resolution when focused.
 
+### v2.4.0 (Anti-Thesaurus Phrasing Simplifier)
+#### Improvements
+* **"Anti-Thesaurus" Phrasing Simplifier (Emily Warren / Cara DioGuardi):** Scans lyrics in real-time. Highlights formal, complex, or multi-syllable (4+) words in the Right Panel and suggests simpler pop-friendly replacements. Click to instantly replace inside the notepad.
+
 ---
 
 ## Suggested Features (From Personas)
@@ -47,8 +51,6 @@ This plan maps implemented features from **v1.0** and **v2.0** alongside future 
   * *Description:* A non-destructive edit vault. Removed lines and cut text blocks are pushed into a bottom drawer or sidebar panel so writers never feel the pressure of permanent deletion.
 
 ### Improvements
-* **"Anti-Thesaurus" Phrasing Simplifier (Emily Warren / Cara DioGuardi):**
-  * *Description:* Highlights complex, multi-syllable, or non-conversational words with dotted underlines, recommending simpler, natural words.
 * **Conversational Phrase Catcher (Justin Tranter / Cara DioGuardi):**
   * *Description:* Floating prompt widget or quick input drawer in the Songs list to log overhearings, casual remarks, and song-starting title phrases.
 * **2-Second Catchiness Tester (Denniz Pop):**

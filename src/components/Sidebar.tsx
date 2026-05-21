@@ -272,7 +272,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
           
           <div className="text-[10px] text-ink-light text-center">
-            Songwriter's Workspace v2.3.0
+            Songwriter's Workspace v2.4.0
           </div>
         </div>
       )}

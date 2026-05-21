@@ -174,6 +174,7 @@ function App() {
         {isRightPanelOpen && activeDraft && (
           <RightPanel
             selectedWord={selectedWord}
+            content={activeDraft.content}
             targetTemplate={activeDraft.targetTemplate}
             syllableTolerance={activeDraft.syllableTolerance ?? 1}
             updateActiveDraft={updateActiveDraft}

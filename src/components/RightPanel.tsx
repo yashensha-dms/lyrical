@@ -1,11 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Music, AlertCircle, Sparkles, ChevronRight, Loader2, Search } from 'lucide-react';
 import { fetchRhymes } from '../utils/rhymes';
 import type { RhymeResult } from '../utils/rhymes';
 import type { Draft } from '../hooks/useDrafts';
+import { scanComplexity } from '../utils/simplifier';
 
 interface RightPanelProps {
   selectedWord: string;
+  content: string;
   targetTemplate: string;
   syllableTolerance: number;
   updateActiveDraft: (updates: Partial<Omit<Draft, 'id' | 'createdAt'>>) => void;
@@ -14,13 +16,17 @@ interface RightPanelProps {
 
 export const RightPanel: React.FC<RightPanelProps> = ({
   selectedWord,
+  content,
   targetTemplate,
   syllableTolerance,
   updateActiveDraft,
   setIsRightPanelOpen,
 }) => {
-  const [activeTab, setActiveTab] = useState<'rhymes' | 'templates'>('rhymes');
+  const [activeTab, setActiveTab] = useState<'rhymes' | 'templates' | 'simplifier'>('rhymes');
   
+  // Scan for complex words in active draft's content
+  const matches = useMemo(() => scanComplexity(content), [content]);
+
   // Rhymes state
   const [queryWord, setQueryWord] = useState('');
   const [manualQuery, setManualQuery] = useState('');
@@ -84,7 +90,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({
     <div className="w-64 h-full bg-paper-dark/70 border-l border-paper-darker flex flex-col flex-shrink-0 z-10">
       {/* Panel Header */}
       <div className="h-14 px-4 border-b border-paper-darker flex items-center justify-between select-none flex-shrink-0">
-        <div className="flex gap-3.5 text-[11px] font-semibold tracking-wide uppercase">
+        <div className="flex gap-2.5 text-[10px] font-semibold tracking-wide uppercase">
           <button
             onClick={() => setActiveTab('rhymes')}
             className={`py-4 border-b-2 cursor-pointer transition ${
@@ -94,6 +100,19 @@ export const RightPanel: React.FC<RightPanelProps> = ({
             }`}
           >
             Rhymes
+          </button>
+          <button
+            onClick={() => setActiveTab('simplifier')}
+            className={`py-4 border-b-2 cursor-pointer transition relative ${
+              activeTab === 'simplifier'
+                ? 'border-terracotta text-ink'
+                : 'border-transparent text-ink-muted hover:text-ink'
+            }`}
+          >
+            Simplifier
+            {matches.length > 0 && (
+              <span className="absolute top-3.5 -right-2.5 w-1.5 h-1.5 rounded-full bg-terracotta animate-pulse" />
+            )}
           </button>
           <button
             onClick={() => setActiveTab('templates')}
@@ -280,6 +299,58 @@ export const RightPanel: React.FC<RightPanelProps> = ({
             <div className="mt-4 p-3 bg-paper border border-paper-darker rounded-lg text-[10px] text-ink-muted leading-relaxed select-none">
               <span className="font-semibold text-ink block mb-1">Pop Tip:</span>
               Most massive Swedish hits use symmetrical grids. Standard templates like 8-7-8-7 or 8-6-8-6 maintain the mathematical bounce of rhythmic pop hooks.
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'simplifier' && (
+          <div className="p-4 flex flex-col h-full min-h-0 select-text">
+            <h4 className="text-xs font-semibold text-ink uppercase tracking-wider mb-1.5 select-none flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-terracotta" /> Anti-Thesaurus
+            </h4>
+            <p className="text-[11px] text-ink-muted leading-relaxed mb-4 select-none">
+              Emily Warren's conversational flow checker. Recommends simple songwriting alternatives to keep your lyrics natural and clear.
+            </p>
+
+            <div className="flex-1 overflow-y-auto min-h-0 space-y-3 pb-4 pr-0.5">
+              {matches.length === 0 ? (
+                <div className="text-center py-8 px-4 border border-dashed border-paper-darker rounded-lg text-ink-light select-none">
+                  <span className="text-emerald-500 font-bold text-lg block mb-1">✓</span>
+                  <p className="text-[11px] leading-relaxed">
+                    All words sound conversational. Emily Warren would approve!
+                  </p>
+                </div>
+              ) : (
+                matches.map((match, idx) => (
+                  <div key={idx} className="bg-paper border border-paper-darker rounded-lg p-3 space-y-2">
+                    <div className="flex items-center justify-between select-none">
+                      <span className="text-xs font-serif font-bold text-ink italic">
+                        "{match.word}"
+                      </span>
+                      <span className="text-[8px] uppercase font-semibold px-1.5 py-0.5 rounded bg-amber-light text-amber-DEFAULT">
+                        {match.reason === 'dictionary' ? 'complex' : '4+ syllables'}
+                      </span>
+                    </div>
+                    
+                    <div className="flex flex-wrap gap-1 items-center">
+                      <span className="text-[10px] text-ink-light select-none mr-0.5">Try:</span>
+                      {match.suggestions.map((s) => (
+                        <button
+                          key={s}
+                          onClick={() => {
+                            const before = content.slice(0, match.index);
+                            const after = content.slice(match.index + match.word.length);
+                            updateActiveDraft({ content: before + s + after });
+                          }}
+                          className="bg-paper border border-paper-darker hover:bg-terracotta hover:text-white hover:border-terracotta px-2 py-0.5 rounded text-[10px] font-semibold text-terracotta transition cursor-pointer"
+                        >
+                          {s}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         )}
