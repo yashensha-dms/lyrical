@@ -1,8 +1,8 @@
-import { FileText, BookOpen, Settings, Disc, Mic } from 'lucide-react';
+import { FileText, BookOpen, Settings, Mic, Quote, PanelLeftClose, PanelLeft } from 'lucide-react';
 
 interface ActivityBarProps {
-  activePanel: 'explorer' | 'scrapbook' | 'audio' | 'settings';
-  setActivePanel: (panel: 'explorer' | 'scrapbook' | 'audio' | 'settings') => void;
+  activePanel: 'explorer' | 'scrapbook' | 'audio' | 'catcher' | 'settings';
+  setActivePanel: (panel: 'explorer' | 'scrapbook' | 'audio' | 'catcher' | 'settings') => void;
   isSidebarOpen: boolean;
   setIsSidebarOpen: (open: boolean) => void;
 }
@@ -13,7 +13,7 @@ export const ActivityBar: React.FC<ActivityBarProps> = ({
   isSidebarOpen,
   setIsSidebarOpen,
 }) => {
-  const handleItemClick = (panel: 'explorer' | 'scrapbook' | 'audio' | 'settings') => {
+  const handleItemClick = (panel: 'explorer' | 'scrapbook' | 'audio' | 'catcher' | 'settings') => {
     if (activePanel === panel && isSidebarOpen) {
       setIsSidebarOpen(false);
     } else {
@@ -26,16 +26,26 @@ export const ActivityBar: React.FC<ActivityBarProps> = ({
     { id: 'explorer' as const, label: 'Drafts Explorer', icon: FileText },
     { id: 'scrapbook' as const, label: 'Method Scrapbook', icon: BookOpen },
     { id: 'audio' as const, label: 'Voice Memos', icon: Mic },
+    { id: 'catcher' as const, label: 'Phrase Catcher', icon: Quote },
     { id: 'settings' as const, label: 'Workspace Settings', icon: Settings },
   ];
 
   return (
     <div className="w-14 h-full bg-paper-dark border-r border-paper-darker flex flex-col justify-between items-center py-4 flex-shrink-0 z-10 select-none">
       <div className="flex flex-col items-center gap-4 w-full">
-        {/* Brand Logo / Icon */}
-        <div className="mb-4 text-terracotta flex items-center justify-center animate-pulse" title="Lyrical Songwriter">
-          <Disc className="w-7 h-7 stroke-[1.5]" />
-        </div>
+        {/* Sidebar Toggle Button */}
+        <button
+          onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+          className={`w-10 h-10 mb-4 rounded-lg flex items-center justify-center transition-all duration-200 cursor-pointer ${
+            isSidebarOpen
+              ? 'bg-paper-darker text-terracotta shadow-inner'
+              : 'text-ink-muted hover:text-ink hover:bg-paper-active/50'
+          }`}
+          title={isSidebarOpen ? "Collapse Left Sidebar" : "Expand Left Sidebar"}
+          aria-label="Toggle Left Sidebar"
+        >
+          {isSidebarOpen ? <PanelLeftClose className="w-5 h-5 stroke-[1.5]" /> : <PanelLeft className="w-5 h-5 stroke-[1.5]" />}
+        </button>
 
         {/* Activity Buttons */}
         {navItems.map((item) => {
@@ -61,7 +71,7 @@ export const ActivityBar: React.FC<ActivityBarProps> = ({
       
       {/* Bottom decorative bar */}
       <div className="text-ink-light text-xs font-mono select-none pointer-events-none">
-        v1.0
+        v2.5.0
       </div>
     </div>
   );

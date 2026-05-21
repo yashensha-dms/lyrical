@@ -1,7 +1,9 @@
-import React, { useRef, useState, useEffect } from 'react';
-import { MapPin, AlertCircle, Brain, Timer, ChevronDown, X, Share2, Check } from 'lucide-react';
+import React, { useRef, useState, useEffect, useCallback } from 'react';
+import { AlertCircle, Brain, Timer, ChevronDown, X, Share2, Check } from 'lucide-react';
 import { countLineSyllables } from '../utils/syllables';
 import type { Draft } from '../hooks/useDrafts';
+import { HighlightingTextarea } from './HighlightingTextarea';
+import { scanComplexity } from '../utils/simplifier';
 
 interface NotepadProps {
   draftId: string;
@@ -15,6 +17,8 @@ interface NotepadProps {
   setIsEditorFocused: (focused: boolean) => void;
   syncActiveDraftWithRemote: () => void;
   isCloudMode: boolean;
+  onSubconsciousActiveChange?: (active: boolean) => void;
+  isMobile?: boolean;
 }
 
 export const Notepad: React.FC<NotepadProps> = ({
@@ -29,16 +33,21 @@ export const Notepad: React.FC<NotepadProps> = ({
   setIsEditorFocused,
   syncActiveDraftWithRemote,
   isCloudMode,
+  onSubconsciousActiveChange,
+  isMobile = false,
 }) => {
   const gutterRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Compute conversational complexity highlights
+  const highlights = React.useMemo(() => scanComplexity(content), [content]);
 
   // Subconscious Blind Timer States
   const [subconsciousActive, setSubconsciousActive] = useState(false);
   const [timeLeft, setTimeLeft] = useState(0);
   const [showPresets, setShowPresets] = useState(false);
   const [showSuccessBanner, setShowSuccessBanner] = useState(false);
-  const timerRef = useRef<any>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const presets = [
     { label: '1 Min', value: 60 },
@@ -49,59 +58,12 @@ export const Notepad: React.FC<NotepadProps> = ({
 
   const [copied, setCopied] = useState(false);
 
-  const handleShare = () => {
-    const shareUrl = `${window.location.origin}/?share=${draftId}`;
-    navigator.clipboard.writeText(shareUrl).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }).catch(err => {
-      console.error('Failed to copy share link:', err);
-    });
-  };
-
-  // Reset subconscious mode if draft changes
-  useEffect(() => {
-    setSubconsciousActive(false);
-    setTimeLeft(0);
-    setShowPresets(false);
-    setShowSuccessBanner(false);
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-    }
-  }, [draftId]);
-
-  // Countdown timer effect
-  useEffect(() => {
-    if (subconsciousActive && timeLeft > 0) {
-      timerRef.current = setInterval(() => {
-        setTimeLeft((prev) => {
-          if (prev <= 1) {
-            if (timerRef.current) clearInterval(timerRef.current);
-            handleTimerComplete();
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    } else {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-      }
-    }
-
-    return () => {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-      }
-    };
-  }, [subconsciousActive, timeLeft]);
-
   // Play synthetic terracotta chime sound using Web Audio API
-  const playChime = () => {
+  const playChime = useCallback(() => {
     try {
-      const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
-      if (!AudioContext) return;
-      const ctx = new AudioContext();
+      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
       const now = ctx.currentTime;
       
       // Tone 1: Fundamental C5
@@ -143,9 +105,9 @@ export const Notepad: React.FC<NotepadProps> = ({
     } catch (e) {
       console.error("Failed to play chime", e);
     }
-  };
+  }, []);
 
-  const handleTimerComplete = () => {
+  const handleTimerComplete = useCallback(() => {
     setSubconsciousActive(false);
     setShowSuccessBanner(true);
     playChime();
@@ -156,7 +118,65 @@ export const Notepad: React.FC<NotepadProps> = ({
         textareaRef.current.setSelectionRange(len, len);
       }
     }, 50);
+  }, [playChime]);
+
+  const handleShare = () => {
+    const shareUrl = `${window.location.origin}/?share=${draftId}`;
+    navigator.clipboard.writeText(shareUrl).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }).catch(err => {
+      console.error('Failed to copy share link:', err);
+    });
   };
+
+  // Adjust state during render if draftId changes (avoids useEffect cascading renders)
+  const [prevDraftId, setPrevDraftId] = useState(draftId);
+  if (draftId !== prevDraftId) {
+    setPrevDraftId(draftId);
+    setSubconsciousActive(false);
+    setTimeLeft(0);
+    setShowPresets(false);
+    setShowSuccessBanner(false);
+  }
+
+  // Sync subconscious active state to parent layout
+  useEffect(() => {
+    if (onSubconsciousActiveChange) {
+      onSubconsciousActiveChange(subconsciousActive);
+    }
+  }, [subconsciousActive, onSubconsciousActiveChange]);
+
+  // Countdown timer effect
+  useEffect(() => {
+    if (subconsciousActive && timeLeft > 0) {
+      timerRef.current = setInterval(() => {
+        setTimeLeft((prev) => {
+          if (prev <= 1) {
+            if (timerRef.current) {
+              clearInterval(timerRef.current);
+              timerRef.current = null;
+            }
+            handleTimerComplete();
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    } else {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+    }
+
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+  }, [subconsciousActive, timeLeft, handleTimerComplete, draftId]);
 
   const handleStartSession = (seconds: number) => {
     setTimeLeft(seconds);
@@ -178,6 +198,7 @@ export const Notepad: React.FC<NotepadProps> = ({
       setTimeLeft(0);
       if (timerRef.current) {
         clearInterval(timerRef.current);
+        timerRef.current = null;
       }
     }
   };
@@ -264,18 +285,20 @@ export const Notepad: React.FC<NotepadProps> = ({
     }
   };
 
+  const handleReplace = (index: number, word: string, replacement: string) => {
+    const before = content.substring(0, index);
+    const after = content.substring(index + word.length);
+    updateActiveDraft({ content: before + replacement + after });
+  };
+
   return (
     <div className="flex-1 h-full bg-paper flex flex-col min-w-0" onClick={focusEditor}>
-      {/* Title Vault (Google Maps Pinned Title Anchor) */}
-      <div 
-        className="px-8 py-3 bg-paper border-b border-paper-darker flex items-center justify-between gap-4 select-none flex-shrink-0 relative"
-        onClick={(e) => e.stopPropagation()} // Prevent editor focus trigger
+      {/* Subconscious & Share Mode Control */}
+      <div
+        className="px-8 py-3 bg-paper border-b border-paper-darker flex items-center justify-end gap-4 select-none flex-shrink-0 relative"
+        onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center gap-2 flex-1">
-          <MapPin className="w-4 h-4 text-terracotta flex-shrink-0" />
-          <span className="text-[10px] font-bold text-terracotta uppercase tracking-wider select-none">
-            Title Vault:
-          </span>
           <input
             type="text"
             value={title}
@@ -283,7 +306,8 @@ export const Notepad: React.FC<NotepadProps> = ({
             onFocus={() => setIsEditorFocused(true)}
             onBlur={() => setIsEditorFocused(false)}
             placeholder="Enter Destination Title (e.g., ...Baby One More Time)"
-            className="flex-1 bg-transparent text-sm font-serif font-bold text-ink placeholder-ink-light/70 focus:outline-none py-0.5 border-b border-transparent focus:border-terracotta transition"
+            className="flex-1 bg-transparent text-sm font-bold text-ink placeholder-ink-light/70 focus:outline-none py-0.5 border-b border-transparent focus:border-terracotta transition"
+            style={{ fontSize: isMobile ? '16px' : undefined }}
             disabled={subconsciousActive}
           />
         </div>
@@ -302,7 +326,7 @@ export const Notepad: React.FC<NotepadProps> = ({
               title="Copy shareable link to clipboard"
             >
               {copied ? <Check className="w-3.5 h-3.5" /> : <Share2 className="w-3.5 h-3.5" />}
-              <span>{copied ? 'Copied Link!' : 'Share'}</span>
+              {/* <span>{copied ? 'Copied Link!' : 'Share'}</span> */}
             </button>
           )}
 
@@ -331,7 +355,7 @@ export const Notepad: React.FC<NotepadProps> = ({
                 }`}
               >
                 <Brain className="w-3.5 h-3.5" />
-                <span>Subconscious</span>
+                {!isMobile && <span>Subconscious</span>}
                 <ChevronDown className={`w-3 h-3 transition-transform duration-200 ${showPresets ? 'rotate-180' : ''}`} />
               </button>
 
@@ -395,90 +419,94 @@ export const Notepad: React.FC<NotepadProps> = ({
 
       {/* Editor Main Section */}
       <div className="flex-1 flex min-h-0 relative">
-        {/* Scrollable Gutter (Line Numbers + Syllable Counts) */}
-        <div
-          ref={gutterRef}
-          className="w-16 bg-paper-dark/30 border-r border-paper-darker/60 flex flex-col overflow-hidden select-none pointer-events-none text-[11px] font-mono text-ink-light flex-shrink-0 py-6"
-        >
-          {(() => {
-            let lyricLineCount = 0;
-            return lines.map((lineText, idx) => {
-              const cleanLine = lineText.trim();
-              const syllableCount = cleanLine ? countLineSyllables(cleanLine) : 0;
-              const isHeader = cleanLine.startsWith('[');
-              const isEmpty = !cleanLine;
-              
-              // Check target matches
-              let isMismatch = false;
-              let isNearMatch = false;
-              let targetCount = 0;
-
-              if (targets.length > 0 && !isHeader && !isEmpty) {
-                targetCount = targets[lyricLineCount % targets.length];
-                const difference = Math.abs(syllableCount - targetCount);
+        {/* Scrollable Gutter (Line Numbers + Syllable Counts) — hidden on mobile */}
+        {!isMobile && (
+          <div
+            ref={gutterRef}
+            className="w-16 bg-paper-dark/30 border-r border-paper-darker/60 flex flex-col overflow-hidden select-none pointer-events-none text-[11px] font-mono text-ink-light flex-shrink-0 py-6"
+          >
+            {(() => {
+              let lyricLineCount = 0;
+              return lines.map((lineText, idx) => {
+                const cleanLine = lineText.trim();
+                const syllableCount = cleanLine ? countLineSyllables(cleanLine) : 0;
+                const isHeader = cleanLine.startsWith('[');
+                const isEmpty = !cleanLine;
                 
-                if (difference > 0) {
-                  if (difference <= syllableTolerance) {
-                    isNearMatch = true;
-                  } else {
-                    isMismatch = true;
-                  }
-                }
-                lyricLineCount++;
-              }
+                // Check target matches
+                let isMismatch = false;
+                let isNearMatch = false;
+                let targetCount = 0;
 
-              return (
-                <div
-                  key={idx}
-                  className="h-8 flex items-center justify-between px-2 w-full leading-8 flex-shrink-0"
-                  style={{ height: '32px' }}
-                >
-                  {/* Line Number */}
-                  <span className="text-[9px] text-ink-light/50">{idx + 1}</span>
+                if (targets.length > 0 && !isHeader && !isEmpty) {
+                  targetCount = targets[lyricLineCount % targets.length];
+                  const difference = Math.abs(syllableCount - targetCount);
                   
-                  {/* Syllable Count Badge */}
-                  {cleanLine ? (
-                    isHeader ? (
-                      // Section header (e.g. [Chorus], [Verse]) - don't show syllable count
-                      <span className="text-[9px] uppercase font-semibold text-terracotta/40 px-1">sec</span>
-                    ) : (
-                      <span
-                        className={`px-1 rounded font-semibold text-[10px] flex items-center gap-0.5 transition-colors duration-150 ${
-                          isMismatch
-                            ? 'bg-amber-light text-amber-DEFAULT font-bold'
-                            : isNearMatch
-                            ? 'bg-paper-darker border border-terracotta/20 text-ink font-medium'
-                            : 'bg-paper-darker text-ink-muted'
-                        }`}
-                        title={
-                          targets.length > 0
-                            ? isMismatch
-                              ? `Mismatch! Target: ${targetCount}, Actual: ${syllableCount}`
+                  if (difference > 0) {
+                    if (difference <= syllableTolerance) {
+                      isNearMatch = true;
+                    } else {
+                      isMismatch = true;
+                    }
+                  }
+                  lyricLineCount++;
+                }
+
+                return (
+                  <div
+                    key={idx}
+                    className="h-8 flex items-center justify-between px-2 w-full leading-8 flex-shrink-0"
+                    style={{ height: '32px' }}
+                  >
+                    {/* Line Number */}
+                    <span className="text-[9px] text-ink-light/50">{idx + 1}</span>
+                    
+                    {/* Syllable Count Badge */}
+                    {cleanLine ? (
+                      isHeader ? (
+                        // Section header (e.g. [Chorus], [Verse]) - don't show syllable count
+                        <span className="text-[9px] uppercase font-semibold text-terracotta/40 px-1">sec</span>
+                      ) : (
+                        <span
+                          className={`px-1 rounded font-semibold text-[10px] flex items-center gap-0.5 transition-colors duration-150 ${
+                            isMismatch
+                              ? 'bg-amber-light text-amber-DEFAULT font-bold'
                               : isNearMatch
-                              ? `Near Match (±${syllableTolerance}). Target: ${targetCount}, Actual: ${syllableCount}`
-                              : `Matches target of ${targetCount} syllables`
-                            : ''
-                        }
-                      >
-                        {syllableCount}
-                        {isMismatch && <AlertCircle className="w-2.5 h-2.5 text-amber stroke-[2.5]" />}
-                      </span>
-                    )
-                  ) : (
-                    <span></span>
-                  )}
-                </div>
-              );
-            });
-          })()}
-        </div>
+                              ? 'bg-paper-darker border border-terracotta/20 text-ink font-medium'
+                              : 'bg-paper-darker text-ink-muted'
+                          }`}
+                          title={
+                            targets.length > 0
+                              ? isMismatch
+                                ? `Mismatch! Target: ${targetCount}, Actual: ${syllableCount}`
+                                : isNearMatch
+                                ? `Near Match (±${syllableTolerance}). Target: ${targetCount}, Actual: ${syllableCount}`
+                                : `Matches target of ${targetCount} syllables`
+                              : ''
+                          }
+                        >
+                          {syllableCount}
+                          {isMismatch && <AlertCircle className="w-2.5 h-2.5 text-amber stroke-[2.5]" />}
+                        </span>
+                      )
+                    ) : (
+                      <span></span>
+                    )}
+                  </div>
+                );
+              });
+            })()}
+          </div>
+        )}
 
         {/* Text Area Canvas */}
         <div className="flex-1 h-full min-w-0" onClick={(e) => e.stopPropagation()}>
-          <textarea
+          <HighlightingTextarea
             ref={textareaRef}
             value={content}
-            onChange={(e) => updateActiveDraft({ content: e.target.value })}
+            onChange={(val) => updateActiveDraft({ content: val })}
+            highlights={highlights}
+            onReplace={handleReplace}
             onFocus={() => setIsEditorFocused(true)}
             onBlur={() => setIsEditorFocused(false)}
             onScroll={handleScroll}
@@ -487,13 +515,7 @@ export const Notepad: React.FC<NotepadProps> = ({
             onKeyDown={handleKeyDown}
             onSelect={handleSelect}
             placeholder={subconsciousActive ? "Keep typing, don't stop, don't look back..." : "Write your lyrics here..."}
-            className={`w-full h-full bg-transparent text-ink placeholder-ink-light/50 font-serif text-[17px] leading-[32px] py-6 px-8 resize-none focus:outline-none whitespace-pre overflow-x-auto overflow-y-auto block border-0 ${
-              subconsciousActive ? 'subconscious-blind-mode' : ''
-            }`}
-            style={{
-              lineHeight: '32px',
-              fontFeatureSettings: '"kern" 1, "liga" 1',
-            }}
+            subconsciousActive={subconsciousActive}
           />
         </div>
       </div>

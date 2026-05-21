@@ -29,9 +29,9 @@ export default {
         }
       },
       fontFamily: {
-        sans: ['Inter', 'sans-serif'],
-        serif: ['Lora', 'Merriweather', 'Georgia', 'serif'],
-        mono: ['Fira Code', 'Courier New', 'monospace'],
+        sans: ['Geist', 'Inter', 'sans-serif'],
+        serif: ['EB Garamond', 'Lora', 'Merriweather', 'Georgia', 'serif'],
+        mono: ['Geist Mono', 'Fira Code', 'Courier New', 'monospace'],
       },
       boxShadow: {
         'paper-sm': '0 1px 2px rgba(44, 42, 41, 0.05)',

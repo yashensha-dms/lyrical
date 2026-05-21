@@ -1,11 +1,13 @@
 import { useState } from 'react';
-import { PanelLeftClose, PanelLeft, PanelRightClose, PanelRight, AlertCircle, RefreshCw } from 'lucide-react';
+import { PanelRightClose, PanelRight, AlertCircle, RefreshCw } from 'lucide-react';
 import { ActivityBar } from './components/ActivityBar';
 import { Sidebar } from './components/Sidebar';
 import { Notepad } from './components/Notepad';
 import { RightPanel } from './components/RightPanel';
 import { StatusBar } from './components/StatusBar';
+import { MobileLayout } from './components/MobileLayout';
 import { useDrafts } from './hooks/useDrafts';
+import { useIsMobile } from './hooks/useIsMobile';
 
 function App() {
   const {
@@ -29,21 +31,56 @@ function App() {
   } = useDrafts();
 
   // Layout panel states
-  const [activePanel, setActivePanel] = useState<'explorer' | 'scrapbook' | 'audio' | 'settings'>('explorer');
+  const [activePanel, setActivePanel] = useState<'explorer' | 'scrapbook' | 'audio' | 'catcher' | 'settings'>('explorer');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isRightPanelOpen, setIsRightPanelOpen] = useState(true);
 
   // Selected word for rhyme lookup
   const [selectedWord, setSelectedWord] = useState('');
 
+  // Subconscious writing mode focus state
+  const [subconsciousActive, setSubconsciousActive] = useState(false);
+
+  // Responsive layout detection
+  const isMobile = useIsMobile();
+
+  // ── Mobile Layout ──
+  if (isMobile) {
+    return (
+      <MobileLayout
+        drafts={drafts}
+        activeDraft={activeDraft}
+        healthStatus={healthStatus}
+        useLocalMode={useLocalMode}
+        isCloudMode={isCloudMode}
+        remoteDraft={remoteDraft}
+        selectDraft={selectDraft}
+        createDraft={createDraft}
+        updateActiveDraft={updateActiveDraft}
+        deleteDraft={deleteDraft}
+        exportAllDrafts={exportAllDrafts}
+        importDrafts={importDrafts}
+        syncLocalToCloud={syncLocalToCloud}
+        setUseLocalMode={setUseLocalMode}
+        setIsEditorFocused={setIsEditorFocused}
+        syncActiveDraftWithRemote={syncActiveDraftWithRemote}
+        onSubconsciousActiveChange={setSubconsciousActive}
+        subconsciousActive={subconsciousActive}
+      />
+    );
+  }
+
+  // ── Desktop Layout ──
   return (
     <div className="w-screen h-screen flex flex-col bg-paper text-ink font-sans select-none overflow-hidden">
       
       {/* Top Application Header */}
-      <header className="h-10 w-full bg-paper-dark border-b border-paper-darker flex items-center justify-between px-4 select-none flex-shrink-0">
-        {/* App Logo */}
+      <header className={`h-10 w-full bg-paper-dark border-b border-paper-darker flex items-center justify-between px-4 select-none flex-shrink-0 transition-all duration-500 ${
+        subconsciousActive ? 'opacity-10 pointer-events-none' : ''
+      }`}>
+        {/* Left Side: App Logo */}
         <div className="flex items-center gap-2">
-          <span className="font-serif italic font-extrabold text-terracotta tracking-wider text-base">Lyrical</span>
+          <span className="font-extrabold text-terracotta tracking-wider text-base">Lyrical</span>
           <span className="text-[10px] bg-paper-darker border border-paper-darker text-ink-muted px-1.5 py-0.5 rounded font-mono font-medium">Core Workspace</span>
           
           {isCloudMode ? (
@@ -57,19 +94,8 @@ function App() {
           )}
         </div>
 
-        {/* Sidebar Toggle Shortcut Controls */}
+        {/* Right Side: Right Panel Toggle */}
         <div className="flex items-center gap-1.5">
-          <button
-            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-            className={`p-1.5 rounded transition cursor-pointer hover:bg-paper-darker text-ink-muted hover:text-ink ${
-              isSidebarOpen ? 'bg-paper-darker/60 text-terracotta' : ''
-            }`}
-            title="Toggle Left Sidebar"
-            aria-label="Toggle Left Sidebar"
-          >
-            {isSidebarOpen ? <PanelLeftClose className="w-4 h-4" /> : <PanelLeft className="w-4 h-4" />}
-          </button>
-          
           <button
             onClick={() => setIsRightPanelOpen(!isRightPanelOpen)}
             className={`p-1.5 rounded transition cursor-pointer hover:bg-paper-darker text-ink-muted hover:text-ink ${
@@ -119,28 +145,36 @@ function App() {
       <main className="flex-1 flex min-h-0 w-full relative">
         
         {/* 1. Activity Bar (Narrow Left) */}
-        <ActivityBar
-          activePanel={activePanel}
-          setActivePanel={setActivePanel}
-          isSidebarOpen={isSidebarOpen}
-          setIsSidebarOpen={setIsSidebarOpen}
-        />
+        <div className={`transition-all duration-500 h-full flex flex-shrink-0 ${
+          subconsciousActive ? 'opacity-10 pointer-events-none' : ''
+        }`}>
+          <ActivityBar
+            activePanel={activePanel}
+            setActivePanel={setActivePanel}
+            isSidebarOpen={isSidebarOpen}
+            setIsSidebarOpen={setIsSidebarOpen}
+          />
+        </div>
 
         {/* 2. Left Collapsible Sidebar */}
         {isSidebarOpen && (
-          <Sidebar
-            activePanel={activePanel}
-            drafts={drafts}
-            activeDraft={activeDraft}
-            selectDraft={selectDraft}
-            createDraft={createDraft}
-            updateActiveDraft={updateActiveDraft}
-            deleteDraft={deleteDraft}
-            exportAllDrafts={exportAllDrafts}
-            importDrafts={importDrafts}
-            setIsSidebarOpen={setIsSidebarOpen}
-            isCloudMode={isCloudMode}
-          />
+          <div className={`transition-all duration-500 h-full flex flex-shrink-0 ${
+            subconsciousActive ? 'opacity-10 pointer-events-none' : ''
+          }`}>
+            <Sidebar
+              activePanel={activePanel}
+              drafts={drafts}
+              activeDraft={activeDraft}
+              selectDraft={selectDraft}
+              createDraft={createDraft}
+              updateActiveDraft={updateActiveDraft}
+              deleteDraft={deleteDraft}
+              exportAllDrafts={exportAllDrafts}
+              importDrafts={importDrafts}
+              setIsSidebarOpen={setIsSidebarOpen}
+              isCloudMode={isCloudMode}
+            />
+          </div>
         )}
 
         {/* 3. Central Notepad Writing Canvas */}
@@ -157,6 +191,7 @@ function App() {
             setIsEditorFocused={setIsEditorFocused}
             syncActiveDraftWithRemote={syncActiveDraftWithRemote}
             isCloudMode={isCloudMode}
+            onSubconsciousActiveChange={setSubconsciousActive}
           />
         ) : (
           <div className="flex-1 h-full bg-paper flex flex-col items-center justify-center text-ink-light select-none">
@@ -172,23 +207,31 @@ function App() {
 
         {/* 4. Right Collapsible Utility Panel */}
         {isRightPanelOpen && activeDraft && (
-          <RightPanel
-            selectedWord={selectedWord}
-            content={activeDraft.content}
-            targetTemplate={activeDraft.targetTemplate}
-            syllableTolerance={activeDraft.syllableTolerance ?? 1}
-            updateActiveDraft={updateActiveDraft}
-            setIsRightPanelOpen={setIsRightPanelOpen}
-          />
+          <div className={`transition-all duration-500 h-full flex flex-shrink-0 ${
+            subconsciousActive ? 'opacity-10 pointer-events-none' : ''
+          }`}>
+            <RightPanel
+              selectedWord={selectedWord}
+              content={activeDraft.content}
+              targetTemplate={activeDraft.targetTemplate}
+              syllableTolerance={activeDraft.syllableTolerance ?? 1}
+              updateActiveDraft={updateActiveDraft}
+              setIsRightPanelOpen={setIsRightPanelOpen}
+            />
+          </div>
         )}
       </main>
 
       {/* 5. Bottom Status Bar */}
-      <StatusBar
-        draftTitle={activeDraft?.title || ''}
-        isSaving={isSaving}
-        content={activeDraft?.content || ''}
-      />
+      <div className={`transition-all duration-500 w-full flex-shrink-0 ${
+        subconsciousActive ? 'opacity-10 pointer-events-none' : ''
+      }`}>
+        <StatusBar
+          draftTitle={activeDraft?.title || ''}
+          isSaving={isSaving}
+          content={activeDraft?.content || ''}
+        />
+      </div>
     </div>
   );
 }

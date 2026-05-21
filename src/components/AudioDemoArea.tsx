@@ -50,6 +50,9 @@ export const AudioDemoArea: React.FC<AudioDemoAreaProps> = ({
 
   // Convert Base64 data to Blob URL for playback
   useEffect(() => {
+    let active = true;
+    let url: string | null = null;
+
     if (audioMemo?.audioData) {
       try {
         const parts = audioMemo.audioData.split(',');
@@ -61,23 +64,45 @@ export const AudioDemoArea: React.FC<AudioDemoAreaProps> = ({
           u8arr[n] = bstr.charCodeAt(n);
         }
         const blob = new Blob([u8arr], { type: mime });
-        const url = URL.createObjectURL(blob);
-        setAudioUrl(url);
-        setTotalDuration(audioMemo.duration);
+        url = URL.createObjectURL(blob);
         
-        return () => {
-          URL.revokeObjectURL(url);
-        };
+        const finalUrl = url;
+        const finalDuration = audioMemo.duration;
+        Promise.resolve().then(() => {
+          if (active) {
+            setAudioUrl(finalUrl);
+            setTotalDuration(finalDuration);
+            setPlaying(false);
+            setCurrentTime(0);
+          }
+        });
       } catch (e) {
         console.error('Error parsing audio data', e);
-        setAudioUrl(null);
+        Promise.resolve().then(() => {
+          if (active) {
+            setAudioUrl(null);
+            setPlaying(false);
+            setCurrentTime(0);
+          }
+        });
       }
     } else {
-      setAudioUrl(null);
-      setTotalDuration(0);
+      Promise.resolve().then(() => {
+        if (active) {
+          setAudioUrl(null);
+          setTotalDuration(0);
+          setPlaying(false);
+          setCurrentTime(0);
+        }
+      });
     }
-    setPlaying(false);
-    setCurrentTime(0);
+
+    return () => {
+      active = false;
+      if (url) {
+        URL.revokeObjectURL(url);
+      }
+    };
   }, [audioMemo]);
 
   // Audio elements event handlers
@@ -131,25 +156,33 @@ export const AudioDemoArea: React.FC<AudioDemoAreaProps> = ({
       // Clear with background color
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      const barWidth = 3;
+      const barWidth = 4;
       const gap = 2;
       const barCount = Math.floor(canvas.width / (barWidth + gap));
       const centerY = canvas.height / 2;
 
-      ctx.fillStyle = '#C2593F'; // Terracotta accent
+      // Premium horizontal gradient across the soundwave canvas
+      const gradient = ctx.createLinearGradient(0, 0, canvas.width, 0);
+      gradient.addColorStop(0, '#C2593F');   // Terracotta primary
+      gradient.addColorStop(0.5, '#E07A5F'); // Soft peach accent
+      gradient.addColorStop(1, '#A3452F');   // Deep Terracotta
+
+      ctx.fillStyle = gradient;
 
       for (let i = 0; i < barCount; i++) {
         // Map frequency index
-        const freqIndex = Math.floor((i / barCount) * bufferLength * 0.5);
+        const freqIndex = Math.floor((i / barCount) * bufferLength * 0.6);
         const value = dataArray[freqIndex] || 0;
+        // Subtle sine noise baseline to keep visualizer active when quiet
+        const noise = Math.sin(i * 0.15 + Date.now() * 0.008) * 3;
         const pct = value / 255;
-        const barHeight = pct * canvas.height * 0.85;
+        const barHeight = Math.max(3, pct * canvas.height * 0.85 + noise);
 
         const x = i * (barWidth + gap);
         const y = centerY - barHeight / 2;
 
         ctx.beginPath();
-        ctx.roundRect(x, Math.max(1, y), barWidth, Math.max(2, barHeight), 1.5);
+        ctx.roundRect(x, y, barWidth, barHeight, barWidth / 2);
         ctx.fill();
       }
     };
@@ -186,7 +219,7 @@ export const AudioDemoArea: React.FC<AudioDemoAreaProps> = ({
       streamRef.current = stream;
       
       // Setup Web Audio API for visualizer
-      const AudioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const AudioCtx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
       const source = AudioCtx.createMediaStreamSource(stream);
       const analyser = AudioCtx.createAnalyser();
       analyser.fftSize = 128;
@@ -305,17 +338,17 @@ export const AudioDemoArea: React.FC<AudioDemoAreaProps> = ({
     <div className="flex-1 flex flex-col h-full select-none">
       {audioUrl ? (
         // Playback Screen
-        <div className="flex-1 flex flex-col justify-between p-4 bg-paper/30 border border-paper-darker rounded-lg m-4">
+        <div className="flex-1 flex flex-col justify-between p-4 bg-paper/30 border border-paper-darker rounded-xl m-4 shadow-paper-sm">
           <audio ref={audioRef} src={audioUrl} />
           
           <div className="space-y-4">
             <div className="flex items-center gap-3">
-              <div className="p-2.5 bg-terracotta-light text-terracotta rounded-lg">
+              <div className="p-3 bg-terracotta-light border border-terracotta/10 text-terracotta rounded-xl shadow-paper-sm">
                 <Music className="w-5 h-5" />
               </div>
               <div>
-                <h4 className="text-xs font-semibold text-ink">Active Demo Vocal</h4>
-                <p className="text-[10px] text-ink-muted">Recorded Memo ({audioMemo ? formatTime(audioMemo.duration) : '00:00'})</p>
+                <h4 className="text-xs font-semibold text-ink tracking-wide">Active Vocal Demo</h4>
+                <p className="text-[10px] font-mono text-ink-muted">Recorded Memo ({audioMemo ? formatTime(audioMemo.duration) : '00:00'})</p>
               </div>
             </div>
 
@@ -328,7 +361,7 @@ export const AudioDemoArea: React.FC<AudioDemoAreaProps> = ({
                 max={totalDuration || 100}
                 value={currentTime}
                 onChange={handleScrub}
-                className="w-full h-1.5 bg-paper-darker rounded-lg appearance-none cursor-pointer accent-terracotta focus:outline-none"
+                className="w-full h-1 bg-paper-darker rounded-lg appearance-none cursor-pointer accent-terracotta focus:outline-none focus:ring-0 [&::-webkit-slider-runnable-track]:bg-paper-darker [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-terracotta [&::-webkit-slider-thumb]:shadow-md [&::-webkit-slider-thumb]:transition-all [&::-webkit-slider-thumb]:hover:scale-125 [&::-moz-range-thumb]:h-3 [&::-moz-range-thumb]:w-3 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-terracotta [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:shadow-md [&::-moz-range-thumb]:transition-all [&::-moz-range-thumb]:hover:scale-125"
               />
               <div className="flex justify-between text-[9px] font-mono text-ink-light">
                 <span>{formatTime(currentTime)}</span>
@@ -340,7 +373,7 @@ export const AudioDemoArea: React.FC<AudioDemoAreaProps> = ({
           <div className="flex justify-between items-center mt-6 pt-3 border-t border-paper-darker">
             <button
               onClick={handleDelete}
-              className="text-ink-muted hover:text-terracotta hover:bg-paper-darker p-2 rounded-md transition cursor-pointer"
+              className="text-ink-muted hover:text-terracotta hover:bg-paper-active p-2 rounded-full transition cursor-pointer"
               title="Delete recording"
               disabled={loading}
             >
@@ -349,7 +382,7 @@ export const AudioDemoArea: React.FC<AudioDemoAreaProps> = ({
 
             <button
               onClick={togglePlay}
-              className="bg-terracotta hover:bg-terracotta-hover text-white p-3 rounded-full shadow-paper-md transition cursor-pointer"
+              className="bg-terracotta hover:bg-terracotta-hover hover:scale-105 active:scale-95 text-white p-3 rounded-full shadow-paper-md transition cursor-pointer"
             >
               {playing ? <Pause className="w-5 h-5 fill-white stroke-none" /> : <Play className="w-5 h-5 fill-white stroke-none translate-x-[1px]" />}
             </button>
@@ -357,7 +390,7 @@ export const AudioDemoArea: React.FC<AudioDemoAreaProps> = ({
             <a
               href={audioUrl}
               download={`demo_${draftId}.webm`}
-              className="text-ink-muted hover:text-ink hover:bg-paper-darker p-2 rounded-md transition cursor-pointer"
+              className="text-ink-muted hover:text-ink hover:bg-paper-active p-2 rounded-full transition cursor-pointer"
               title="Download vocal file"
             >
               <Download className="w-4 h-4" />
@@ -366,61 +399,62 @@ export const AudioDemoArea: React.FC<AudioDemoAreaProps> = ({
         </div>
       ) : recording ? (
         // Recording Active Screen
-        <div className="flex-1 flex flex-col justify-between p-4 bg-terracotta-light/30 border border-terracotta/20 rounded-lg m-4">
-          <div className="text-center space-y-2">
-            <span className="text-[10px] font-bold text-terracotta uppercase tracking-wider animate-pulse flex items-center justify-center gap-1">
-              <span className="w-2 h-2 bg-terracotta rounded-full"></span> RECORDING MEMO
+        <div className="flex-1 flex flex-col justify-between p-4 bg-terracotta-light/30 border border-terracotta/20 rounded-xl m-4 shadow-paper-sm">
+          <div className="text-center space-y-1">
+            <span className="text-[9px] font-bold text-terracotta uppercase tracking-widest animate-pulse flex items-center justify-center gap-1.5">
+              <span className="w-1.5 h-1.5 bg-terracotta rounded-full"></span> Live Recording
             </span>
-            <div className="text-3xl font-mono font-bold text-ink">
+            <div className="text-2xl font-mono font-bold text-ink">
               {formatTime(recordTime)}
             </div>
           </div>
 
           {/* Symmetrical Soundwave Canvas */}
-          <div className="my-6 h-16 w-full flex items-center justify-center bg-paper/40 rounded-lg border border-paper-darker">
+          <div className="my-4 h-16 w-full flex items-center justify-center bg-paper rounded-lg border border-paper-darker shadow-inner overflow-hidden">
             <canvas ref={canvasRef} width={200} height={60} className="w-full h-full" />
           </div>
 
-          <div className="flex justify-center items-center gap-6 mt-4">
+          <div className="flex justify-center items-center gap-4 mt-2 select-none">
             <button
               onClick={cancelRecording}
-              className="text-ink-muted hover:text-ink hover:bg-paper-darker p-2 rounded-full transition cursor-pointer flex items-center gap-1 border border-paper-darker bg-paper text-xs px-3 py-1.5"
+              className="text-ink-muted hover:text-ink hover:bg-paper-active p-2 rounded-lg transition-all cursor-pointer flex items-center gap-1 border border-paper-darker bg-paper text-[10px] font-bold uppercase tracking-wider px-3.5 py-1.5 shadow-paper-sm"
             >
               <X className="w-3.5 h-3.5" /> Discard
             </button>
 
             <button
               onClick={stopRecording}
-              className="bg-terracotta hover:bg-terracotta-hover text-white p-4 rounded-full shadow-paper-md transition cursor-pointer flex items-center justify-center"
+              className="bg-terracotta hover:bg-terracotta-hover text-white p-3.5 rounded-full shadow-paper-md hover:scale-105 active:scale-95 transition-all duration-200 flex items-center justify-center relative cursor-pointer"
               title="Stop & Save Recording"
             >
-              <Square className="w-5 h-5 fill-white stroke-none" />
+              <span className="absolute inset-0 rounded-full border border-terracotta/30 animate-ping pointer-events-none" />
+              <Square className="w-4 h-4 fill-white stroke-none" />
             </button>
           </div>
         </div>
       ) : (
         // Idle/Start Recording Screen
-        <div className="flex-1 flex flex-col items-center justify-center text-center p-6 m-4 border border-dashed border-paper-darker rounded-lg bg-paper-dark/20">
-          <div className="mb-4 p-4 bg-paper border border-paper-darker rounded-full shadow-paper-sm">
-            <Mic className="w-8 h-8 text-ink-muted" />
+        <div className="flex-1 flex flex-col items-center justify-center text-center p-6 m-4 border border-dashed border-paper-darker rounded-xl bg-paper/30 shadow-inner">
+          <div className="mb-4 p-4 bg-paper border border-paper-darker rounded-full shadow-paper-sm hover:scale-105 transition-transform duration-300">
+            <Mic className="w-6 h-6 text-terracotta" />
           </div>
 
-          <h4 className="text-xs font-semibold text-ink uppercase tracking-wider mb-2">Record Voice Memo</h4>
-          <p className="text-[10px] text-ink-muted leading-relaxed mb-6 max-w-xs">
-            Hum your melody, record scratch backing vocals, or map out basic arrangements. Recorded memos show up here whenever you open this song.
+          <h4 className="text-[11px] font-bold text-ink uppercase tracking-wider mb-2">Record Vocal Draft</h4>
+          <p className="text-[10px] text-ink-muted leading-relaxed mb-5 max-w-[200px]">
+            Hum your melody, record scratch backing vocals, or map out basic arrangements.
           </p>
 
           {loading ? (
-            <div className="flex items-center gap-2 text-xs text-ink-muted">
-              <Loader2 className="w-4 h-4 animate-spin text-terracotta" />
+            <div className="flex items-center gap-2 text-[11px] text-ink-muted font-medium">
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-terracotta" />
               <span>Updating demo vault...</span>
             </div>
           ) : (
             <button
               onClick={startRecording}
-              className="flex items-center gap-2 bg-terracotta hover:bg-terracotta-hover text-white px-4 py-2 rounded-md text-xs font-medium cursor-pointer shadow-paper-sm hover:scale-[1.02] active:scale-[0.98] transition duration-150"
+              className="flex items-center gap-2 bg-terracotta hover:bg-terracotta-hover text-white px-4 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wider cursor-pointer shadow-paper-md hover:scale-[1.03] active:scale-[0.97] transition-all duration-200"
             >
-              <Mic className="w-4 h-4" /> Start Recording
+              <Mic className="w-3.5 h-3.5" /> Start Recording
             </button>
           )}
         </div>
