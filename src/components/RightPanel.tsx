@@ -83,8 +83,8 @@ export const RightPanel: React.FC<RightPanelProps> = ({
   return (
     <div className="w-64 h-full bg-paper-dark/70 border-l border-paper-darker flex flex-col flex-shrink-0 z-10">
       {/* Panel Header */}
-      <div className="h-14 px-4 border-b border-paper-darker flex items-center justify-between select-none">
-        <div className="flex gap-4 text-xs font-semibold tracking-wide uppercase">
+      <div className="h-14 px-4 border-b border-paper-darker flex items-center justify-between select-none flex-shrink-0">
+        <div className="flex gap-3.5 text-[11px] font-semibold tracking-wide uppercase">
           <button
             onClick={() => setActiveTab('rhymes')}
             className={`py-4 border-b-2 cursor-pointer transition ${
@@ -283,6 +283,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({
             </div>
           </div>
         )}
+
       </div>
     </div>
   );

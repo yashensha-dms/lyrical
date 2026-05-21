@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { PanelLeftClose, PanelLeft, PanelRightClose, PanelRight } from 'lucide-react';
+import { PanelLeftClose, PanelLeft, PanelRightClose, PanelRight, AlertCircle, RefreshCw } from 'lucide-react';
 import { ActivityBar } from './components/ActivityBar';
 import { Sidebar } from './components/Sidebar';
 import { Notepad } from './components/Notepad';
@@ -12,16 +12,21 @@ function App() {
     drafts,
     activeDraft,
     isSaving,
+    healthStatus,
+    useLocalMode,
+    isCloudMode,
+    setUseLocalMode,
     selectDraft,
     createDraft,
     updateActiveDraft,
     deleteDraft,
+    syncLocalToCloud,
     exportAllDrafts,
     importDrafts,
   } = useDrafts();
 
   // Layout panel states
-  const [activePanel, setActivePanel] = useState<'explorer' | 'scrapbook' | 'settings'>('explorer');
+  const [activePanel, setActivePanel] = useState<'explorer' | 'scrapbook' | 'audio' | 'settings'>('explorer');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isRightPanelOpen, setIsRightPanelOpen] = useState(true);
 
@@ -37,6 +42,16 @@ function App() {
         <div className="flex items-center gap-2">
           <span className="font-serif italic font-extrabold text-terracotta tracking-wider text-base">Lyrical</span>
           <span className="text-[10px] bg-paper-darker border border-paper-darker text-ink-muted px-1.5 py-0.5 rounded font-mono font-medium">Core Workspace</span>
+          
+          {isCloudMode ? (
+            <span className="flex items-center gap-1 text-[9px] bg-paper border border-paper-darker text-[#10B981] px-1.5 py-0.5 rounded font-mono font-semibold">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#10B981]"></span> Cloud
+            </span>
+          ) : (
+            <span className="flex items-center gap-1 text-[9px] bg-[#FEF3C7] border border-[#FDE68A] text-[#D97706] px-1.5 py-0.5 rounded font-mono font-semibold">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#D97706] animate-pulse"></span> Local
+            </span>
+          )}
         </div>
 
         {/* Sidebar Toggle Shortcut Controls */}
@@ -64,6 +79,38 @@ function App() {
           </button>
         </div>
       </header>
+      
+      {/* Offline Warning Banner */}
+      {healthStatus === 'disconnected' && !useLocalMode && (
+        <div className="bg-[#FEF3C7] text-ink border-b border-[#FDE68A] px-4 py-2 flex items-center justify-between text-xs font-medium flex-shrink-0 select-none">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-[#D97706]" />
+            <span>Database connection is offline. Cloud features are unavailable.</span>
+          </div>
+          <button
+            onClick={() => setUseLocalMode(true)}
+            className="bg-[#D97706] hover:bg-[#B45309] text-white px-2.5 py-1 rounded text-[10px] uppercase font-bold tracking-wider transition cursor-pointer"
+          >
+            Switch to Local Mode
+          </button>
+        </div>
+      )}
+
+      {/* Sync Banner */}
+      {healthStatus === 'connected' && useLocalMode && (
+        <div className="bg-terracotta-light text-ink border-b border-terracotta/20 px-4 py-2 flex items-center justify-between text-xs font-medium flex-shrink-0 select-none">
+          <div className="flex items-center gap-2">
+            <RefreshCw className="w-4 h-4 text-terracotta animate-spin" style={{ animationDuration: '3s' }} />
+            <span>Database connection restored! You are currently using offline local storage.</span>
+          </div>
+          <button
+            onClick={syncLocalToCloud}
+            className="bg-terracotta hover:bg-terracotta-hover text-white px-2.5 py-1 rounded text-[10px] uppercase font-bold tracking-wider transition cursor-pointer"
+          >
+            Publish to Cloud
+          </button>
+        </div>
+      )}
 
       {/* Main Workspace Area */}
       <main className="flex-1 flex min-h-0 w-full relative">
@@ -89,6 +136,7 @@ function App() {
             exportAllDrafts={exportAllDrafts}
             importDrafts={importDrafts}
             setIsSidebarOpen={setIsSidebarOpen}
+            isCloudMode={isCloudMode}
           />
         )}
 

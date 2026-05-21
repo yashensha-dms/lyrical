@@ -1,9 +1,8 @@
-import React from 'react';
-import { FileText, BookOpen, Settings, Disc } from 'lucide-react';
+import { FileText, BookOpen, Settings, Disc, Mic } from 'lucide-react';
 
 interface ActivityBarProps {
-  activePanel: 'explorer' | 'scrapbook' | 'settings';
-  setActivePanel: (panel: 'explorer' | 'scrapbook' | 'settings') => void;
+  activePanel: 'explorer' | 'scrapbook' | 'audio' | 'settings';
+  setActivePanel: (panel: 'explorer' | 'scrapbook' | 'audio' | 'settings') => void;
   isSidebarOpen: boolean;
   setIsSidebarOpen: (open: boolean) => void;
 }
@@ -14,7 +13,7 @@ export const ActivityBar: React.FC<ActivityBarProps> = ({
   isSidebarOpen,
   setIsSidebarOpen,
 }) => {
-  const handleItemClick = (panel: 'explorer' | 'scrapbook' | 'settings') => {
+  const handleItemClick = (panel: 'explorer' | 'scrapbook' | 'audio' | 'settings') => {
     if (activePanel === panel && isSidebarOpen) {
       setIsSidebarOpen(false);
     } else {
@@ -26,6 +25,7 @@ export const ActivityBar: React.FC<ActivityBarProps> = ({
   const navItems = [
     { id: 'explorer' as const, label: 'Drafts Explorer', icon: FileText },
     { id: 'scrapbook' as const, label: 'Method Scrapbook', icon: BookOpen },
+    { id: 'audio' as const, label: 'Voice Memos', icon: Mic },
     { id: 'settings' as const, label: 'Workspace Settings', icon: Settings },
   ];
 

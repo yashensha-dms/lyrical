@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { Plus, Trash2, Search, FileDown, FileUp, ChevronLeft } from 'lucide-react';
+import { Plus, Trash2, Search, FileDown, FileUp, ChevronLeft, Mic } from 'lucide-react';
 import type { Draft } from '../hooks/useDrafts';
+import { AudioDemoArea } from './AudioDemoArea';
 
 interface SidebarProps {
-  activePanel: 'explorer' | 'scrapbook' | 'settings';
+  activePanel: 'explorer' | 'scrapbook' | 'audio' | 'settings';
   drafts: Draft[];
   activeDraft: Draft | null;
   selectDraft: (id: string) => void;
@@ -13,6 +14,7 @@ interface SidebarProps {
   exportAllDrafts: () => void;
   importDrafts: (jsonString: string) => boolean;
   setIsSidebarOpen: (open: boolean) => void;
+  isCloudMode: boolean;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -26,6 +28,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   exportAllDrafts,
   importDrafts,
   setIsSidebarOpen,
+  isCloudMode,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -80,6 +83,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <span className="font-semibold tracking-wide text-ink text-sm uppercase">
           {activePanel === 'explorer' && 'Songs'}
           {activePanel === 'scrapbook' && 'Scrapbook'}
+          {activePanel === 'audio' && 'Voice Memos'}
           {activePanel === 'settings' && 'Settings'}
         </span>
         <button
@@ -148,13 +152,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
                           className="w-full bg-paper border border-terracotta rounded px-1.5 py-0.5 text-xs text-ink focus:outline-none"
                         />
                       ) : (
-                        <span
-                          onDoubleClick={() => startRename(draft.id, draft.title)}
-                          className="text-xs truncate block"
-                          title="Double-click to rename"
-                        >
-                          {draft.title || 'Untitled Song'}
-                        </span>
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span
+                            onDoubleClick={() => startRename(draft.id, draft.title)}
+                            className="text-xs truncate block"
+                            title="Double-click to rename"
+                          >
+                            {draft.title || 'Untitled Song'}
+                          </span>
+                          {draft.hasAudio && (
+                            <Mic className="w-3 h-3 text-terracotta flex-shrink-0" />
+                          )}
+                        </div>
                       )}
                     </div>
                     
@@ -198,6 +207,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
           ) : (
             <div className="text-center py-8 text-xs text-ink-light select-none">
               Open a song to start scrapbooking.
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Voice Memos Panel */}
+      {activePanel === 'audio' && (
+        <div className="flex-1 flex flex-col min-h-0">
+          {activeDraft ? (
+            <AudioDemoArea
+              draftId={activeDraft.id}
+              isCloudMode={isCloudMode}
+              onAudioChange={(hasAudio) => updateActiveDraft({ hasAudio })}
+            />
+          ) : (
+            <div className="text-center py-8 text-xs text-ink-light select-none">
+              Open a song to record and view voice memos.
             </div>
           )}
         </div>
