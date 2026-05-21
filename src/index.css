@@ -1,0 +1,37 @@
+@import "tailwindcss";
+@config "../tailwind.config.js";
+
+body {
+  @apply bg-paper text-ink font-sans antialiased overflow-hidden h-screen w-screen select-none;
+}
+
+/* Inputs/Textareas must be selectable */
+input, textarea, [contenteditable="true"] {
+  @apply select-text;
+}
+
+/* Custom minimal scrollbar to match paper aesthetic */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: #E2DBD0;
+  border-radius: 4px;
+  border: 2px solid #FAF8F5;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: #C6BCB0;
+}
+
+/* Focus ring override for smooth writing */
+*:focus-visible {
+  outline: 2px solid #C2593F;
+  outline-offset: 1px;
+}
