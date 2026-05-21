@@ -1,83 +1,120 @@
 import { useState, useEffect, useCallback } from 'react';
-import { getLocalAudio, saveLocalAudio, deleteLocalAudio } from '../utils/indexedDb';
+import { getLocalAudios, getLocalAudio, saveLocalAudio, deleteLocalAudio } from '../utils/indexedDb';
 
-interface AudioMemo {
-  audioData: string; // Base64 data URI
+export interface AudioMemo {
+  id: string;
+  audioData: string;
   duration: number;
   mimeType: string;
+  createdAt: string;
 }
 
 export function useAudioMemo(
   draftId: string | undefined,
   isCloudMode: boolean,
-  onAudioChange?: (hasAudio: boolean) => void
+  onAudioChange?: (audioCount: number) => void
 ) {
-  const [audioMemo, setAudioMemo] = useState<AudioMemo | null>(null);
+  const [audioMemos, setAudioMemos] = useState<AudioMemo[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const loadAudio = useCallback(async () => {
+  const loadAudios = useCallback(async () => {
     if (!draftId) {
-      setAudioMemo(null);
+      setAudioMemos([]);
       return;
     }
 
     setLoading(true);
     let loaded = false;
 
+    const sorted = (list: AudioMemo[]) =>
+      list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
     if (isCloudMode) {
       try {
-        const res = await fetch(`/api/drafts/${draftId}/audio`);
+        const res = await fetch(`/api/drafts/${draftId}/audios`);
         if (res.ok) {
-          const data = await res.json();
-          setAudioMemo({
-            audioData: data.audioData,
-            duration: data.duration,
-            mimeType: data.mimeType
-          });
+          const list = await res.json();
+          const memos: AudioMemo[] = list.map((m: any) => ({
+            id: m.id,
+            audioData: '',
+            duration: m.duration,
+            mimeType: m.mimeType,
+            createdAt: m.createdAt,
+          }));
+          setAudioMemos(sorted(memos));
           loaded = true;
         }
       } catch (e) {
-        console.error('Failed to load cloud audio, checking local database...', e);
+        console.error('Failed to load cloud audio list, checking local database...', e);
       }
     }
 
     if (!loaded) {
       try {
-        const local = await getLocalAudio(draftId);
-        if (local) {
-          setAudioMemo({
-            audioData: local.audioData,
-            duration: local.duration,
-            mimeType: local.mimeType
-          });
-        } else {
-          setAudioMemo(null);
-        }
+        const local = await getLocalAudios(draftId);
+        setAudioMemos(sorted(local.map(a => ({
+          id: a.id,
+          audioData: a.audioData,
+          duration: a.duration,
+          mimeType: a.mimeType,
+          createdAt: a.createdAt,
+        }))));
       } catch (e) {
-        console.error('Failed to load local audio', e);
-        setAudioMemo(null);
+        console.error('Failed to load local audios', e);
+        setAudioMemos([]);
       }
     }
     setLoading(false);
   }, [draftId, isCloudMode]);
 
-  // Load audio when draft changes
   useEffect(() => {
-    loadAudio();
-  }, [loadAudio]);
+    loadAudios();
+  }, [loadAudios]);
+
+  const loadAudioData = useCallback(async (audioId: string): Promise<AudioMemo | null> => {
+    if (!draftId) return null;
+
+    if (isCloudMode) {
+      try {
+        const res = await fetch(`/api/drafts/${draftId}/audio/${audioId}`);
+        if (res.ok) {
+          return await res.json();
+        }
+      } catch (e) {
+        console.error('Failed to load cloud audio data', e);
+      }
+    }
+
+    try {
+      const local = await getLocalAudio(audioId);
+      if (local) {
+        return {
+          id: local.id,
+          audioData: local.audioData,
+          duration: local.duration,
+          mimeType: local.mimeType,
+          createdAt: local.createdAt,
+        };
+      }
+    } catch (e) {
+      console.error('Failed to load local audio data', e);
+    }
+    return null;
+  }, [draftId, isCloudMode]);
 
   const saveAudio = useCallback(async (audioData: string, duration: number, mimeType: string) => {
     if (!draftId) return;
 
     setLoading(true);
-    // 1. Save locally to IndexedDB as backup/primary
+    const audioId = `audio-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const createdAt = new Date().toISOString();
+
     try {
-      await saveLocalAudio(draftId, audioData, duration, mimeType);
+      await saveLocalAudio(audioId, draftId, audioData, duration, mimeType, createdAt);
     } catch (e) {
       console.error('Failed to save audio to IndexedDB', e);
     }
 
-    // 2. Save to cloud server if online
     if (isCloudMode) {
       try {
         await fetch(`/api/drafts/${draftId}/audio`, {
@@ -90,41 +127,43 @@ export function useAudioMemo(
       }
     }
 
-    setAudioMemo({ audioData, duration, mimeType });
-    if (onAudioChange) onAudioChange(true);
+    const newMemo: AudioMemo = { id: audioId, audioData, duration, mimeType, createdAt };
+    setAudioMemos(prev => [newMemo, ...prev]);
+    if (onAudioChange) onAudioChange(audioMemos.length + 1);
     setLoading(false);
-  }, [draftId, isCloudMode, onAudioChange]);
+  }, [draftId, isCloudMode, onAudioChange, audioMemos.length]);
 
-  const deleteAudio = useCallback(async () => {
+  const deleteAudio = useCallback(async (audioId: string) => {
     if (!draftId) return;
 
     setLoading(true);
-    // 1. Delete locally from IndexedDB
+
     try {
-      await deleteLocalAudio(draftId);
+      await deleteLocalAudio(audioId);
     } catch (e) {
       console.error('Failed to delete audio from IndexedDB', e);
     }
 
-    // 2. Delete from cloud server if online
     if (isCloudMode) {
       try {
-        await fetch(`/api/drafts/${draftId}/audio`, { method: 'DELETE' });
+        await fetch(`/api/drafts/${draftId}/audio/${audioId}`, { method: 'DELETE' });
       } catch (e) {
         console.error('Failed to delete cloud audio', e);
       }
     }
 
-    setAudioMemo(null);
-    if (onAudioChange) onAudioChange(false);
+    const newList = audioMemos.filter(m => m.id !== audioId);
+    setAudioMemos(newList);
+    if (onAudioChange) onAudioChange(newList.length);
     setLoading(false);
-  }, [draftId, isCloudMode, onAudioChange]);
+  }, [draftId, isCloudMode, onAudioChange, audioMemos]);
 
   return {
-    audioMemo,
+    audioMemos,
     loading,
     saveAudio,
     deleteAudio,
-    reloadAudio: loadAudio
+    loadAudioData,
+    reloadAudio: loadAudios
   };
 }

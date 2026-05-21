@@ -63,8 +63,10 @@ const requireDb = (req: express.Request, res: express.Response, next: express.Ne
 app.get('/api/drafts', requireDb, async (req, res) => {
   try {
     const drafts = await DraftModel.find();
-    const audioMemos = await AudioMemoModel.find({}, 'draftId');
-    const audioDraftIds = new Set(audioMemos.map(a => a.draftId));
+    const audioCounts = await AudioMemoModel.aggregate([
+      { $group: { _id: '$draftId', count: { $sum: 1 } } }
+    ]);
+    const countMap = new Map(audioCounts.map(a => [a._id, a.count]));
 
     const response = drafts.map(d => ({
       id: d._id,
@@ -73,68 +75,7 @@ app.get('/api/drafts', requireDb, async (req, res) => {
       scrapbook: d.scrapbook,
       targetTemplate: d.targetTemplate,
       syllableTolerance: d.syllableTolerance ?? 1,
-      hasAudio: audioDraftIds.has(d._id),
-      createdAt: d.createdAt.toISOString(),
-      updatedAt: d.updatedAt.toISOString(),
-    }));
-
-    res.json(response);
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// 1.5. Get a single draft by ID
-app.get('/api/drafts/:id', requireDb, async (req, res) => {
-  const { id } = req.params;
-  try {
-    const draft = await DraftModel.findById(id);
-    if (!draft) {
-      return res.status(404).json({ error: 'Draft not found' });
-    }
-    const audioMemo = await AudioMemoModel.findOne({ draftId: id }, 'draftId');
-    res.json({
-      id: draft._id,
-      title: draft.title,
-      content: draft.content,
-      scrapbook: draft.scrapbook,
-      targetTemplate: draft.targetTemplate,
-      syllableTolerance: draft.syllableTolerance ?? 1,
-      hasAudio: !!audioMemo,
-      createdAt: draft.createdAt.toISOString(),
-      updatedAt: draft.updatedAt.toISOString(),
-    });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// 2. Create a new draft
-app.post('/api/drafts', requireDb, async (req, res) => {
-  const { id, title, content, scrapbook, targetTemplate, syllableTolerance } = req.body;
-  if (!id) {
-    return res.status(400).json({ error: 'Missing draft id' });
-  }
-  
-  try {
-    const newDraft = new DraftModel({
-      _id: id,
-      title: title || '',
-      content: content || '',
-      scrapbook: scrapbook || '',
-      targetTemplate: targetTemplate || '',
-      syllableTolerance: syllableTolerance !== undefined ? syllableTolerance : 1,
-    });
-    await newDraft.save();
-    
-    res.status(201).json({
-      id: newDraft._id,
-      title: newDraft.title,
-      content: newDraft.content,
-      scrapbook: newDraft.scrapbook,
-      targetTemplate: newDraft.targetTemplate,
-      syllableTolerance: newDraft.syllableTolerance ?? 1,
-      hasAudio: false,
+      audioCount: 0,
       createdAt: newDraft.createdAt.toISOString(),
       updatedAt: newDraft.updatedAt.toISOString(),
     });
@@ -178,40 +119,60 @@ app.put('/api/drafts/:id', requireDb, async (req, res) => {
   }
 });
 
-// 4. Delete a draft (and associated audio memo)
+// 4. Delete a draft (and all associated audio memos)
 app.delete('/api/drafts/:id', requireDb, async (req, res) => {
   const { id } = req.params;
   
   try {
     await DraftModel.findByIdAndDelete(id);
-    await AudioMemoModel.findOneAndDelete({ draftId: id });
+    await AudioMemoModel.deleteMany({ draftId: id });
     res.json({ success: true });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
 });
 
-// 5. Get the audio memo for a draft
-app.get('/api/drafts/:id/audio', requireDb, async (req, res) => {
+// 5. List all audio memos (summaries without data) for a draft
+app.get('/api/drafts/:id/audios', requireDb, async (req, res) => {
   const { id } = req.params;
   
   try {
-    const memo = await AudioMemoModel.findOne({ draftId: id });
+    const memos = await AudioMemoModel.find({ draftId: id }, 'draftId duration mimeType createdAt');
+    res.json(memos.map(m => ({
+      id: m._id,
+      draftId: m.draftId,
+      duration: m.duration,
+      mimeType: m.mimeType,
+      createdAt: m.createdAt.toISOString(),
+    })));
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 6. Get a specific audio memo with data
+app.get('/api/drafts/:id/audio/:audioId', requireDb, async (req, res) => {
+  const { audioId } = req.params;
+  
+  try {
+    const memo = await AudioMemoModel.findById(audioId);
     if (!memo) {
       return res.status(404).json({ error: 'Audio memo not found' });
     }
     res.json({
+      id: memo._id,
       draftId: memo.draftId,
       audioData: memo.audioData,
       duration: memo.duration,
       mimeType: memo.mimeType,
+      createdAt: memo.createdAt.toISOString(),
     });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
 });
 
-// 6. Save or update the audio memo for a draft
+// 7. Create a new audio memo for a draft
 app.post('/api/drafts/:id/audio', requireDb, async (req, res) => {
   const { id } = req.params;
   const { audioData, duration, mimeType } = req.body;
@@ -221,30 +182,34 @@ app.post('/api/drafts/:id/audio', requireDb, async (req, res) => {
   }
   
   try {
-    const memo = await AudioMemoModel.findOneAndUpdate(
-      { draftId: id },
-      { audioData, duration, mimeType },
-      { upsert: true, new: true }
-    );
-    res.json({ success: true, draftId: memo.draftId });
+    const memo = new AudioMemoModel({ draftId: id, audioData, duration, mimeType });
+    await memo.save();
+    res.status(201).json({
+      id: memo._id,
+      draftId: memo.draftId,
+      audioData: memo.audioData,
+      duration: memo.duration,
+      mimeType: memo.mimeType,
+      createdAt: memo.createdAt.toISOString(),
+    });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
 });
 
-// 7. Delete the audio memo for a draft
-app.delete('/api/drafts/:id/audio', requireDb, async (req, res) => {
-  const { id } = req.params;
+// 8. Delete a specific audio memo
+app.delete('/api/drafts/:id/audio/:audioId', requireDb, async (req, res) => {
+  const { audioId } = req.params;
   
   try {
-    await AudioMemoModel.findOneAndDelete({ draftId: id });
+    await AudioMemoModel.findByIdAndDelete(audioId);
     res.json({ success: true });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
 });
 
-// 8. Bulk sync local drafts to cloud
+// 9. Bulk sync local drafts to cloud
 app.post('/api/sync', requireDb, async (req, res) => {
   const { drafts } = req.body;
   if (!Array.isArray(drafts)) {

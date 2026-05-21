@@ -3,7 +3,9 @@
 @config "../tailwind.config.js";
 
 body {
-  @apply bg-paper text-ink font-sans antialiased overflow-hidden h-screen w-screen select-none;
+  @apply bg-paper text-ink font-sans antialiased overflow-hidden w-screen select-none;
+  height: 100vh;
+  height: 100dvh;
 }
 
 /* Inputs/Textareas must be selectable */

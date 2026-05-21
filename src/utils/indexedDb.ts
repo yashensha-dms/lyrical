@@ -1,29 +1,34 @@
 const DB_NAME = 'LyricalDB';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const DRAFTS_STORE = 'drafts';
 const AUDIO_STORE = 'audio';
 
-// Re-declare local interfaces to avoid circular dependency
+let dbInstance: IDBDatabase | null = null;
+
 export interface LocalDraft {
   id: string;
   title: string;
   content: string;
   scrapbook: string;
   targetTemplate: string;
-  hasAudio: boolean;
+  audioCount: number;
   syllableTolerance?: number;
   createdAt: string;
   updatedAt?: string;
 }
 
 export interface LocalAudio {
+  id: string;
   draftId: string;
-  audioData: string; // Base64 encoded data URI
+  audioData: string;
   duration: number;
   mimeType: string;
+  createdAt: string;
 }
 
 export const initDB = (): Promise<IDBDatabase> => {
+  if (dbInstance) return Promise.resolve(dbInstance);
+
   return new Promise((resolve, reject) => {
     if (typeof window === 'undefined' || !window.indexedDB) {
       reject(new Error('IndexedDB is not supported on this platform'));
@@ -36,16 +41,48 @@ export const initDB = (): Promise<IDBDatabase> => {
     };
 
     request.onsuccess = (event) => {
-      resolve((event.target as IDBOpenDBRequest).result);
+      dbInstance = (event.target as IDBOpenDBRequest).result;
+      resolve(dbInstance);
     };
 
     request.onupgradeneeded = (event) => {
       const db = (event.target as IDBOpenDBRequest).result;
-      if (!db.objectStoreNames.contains(DRAFTS_STORE)) {
-        db.createObjectStore(DRAFTS_STORE, { keyPath: 'id' });
+      const oldVersion = event.oldVersion;
+
+      if (oldVersion < 1) {
+        if (!db.objectStoreNames.contains(DRAFTS_STORE)) {
+          const store = db.createObjectStore(DRAFTS_STORE, { keyPath: 'id' });
+          store.createIndex('updatedAt', 'updatedAt', { unique: false });
+        }
+        if (!db.objectStoreNames.contains(AUDIO_STORE)) {
+          db.createObjectStore(AUDIO_STORE, { keyPath: 'draftId' });
+        }
       }
-      if (!db.objectStoreNames.contains(AUDIO_STORE)) {
-        db.createObjectStore(AUDIO_STORE, { keyPath: 'draftId' });
+
+      if (oldVersion < 2) {
+        if (db.objectStoreNames.contains(AUDIO_STORE)) {
+          db.deleteObjectStore(AUDIO_STORE);
+        }
+        const store = db.createObjectStore(AUDIO_STORE, { keyPath: 'id' });
+        store.createIndex('draftId', 'draftId', { unique: false });
+        store.createIndex('createdAt', 'createdAt', { unique: false });
+
+        const draftStore = request.transaction?.objectStore(DRAFTS_STORE);
+        if (draftStore) {
+          const cursorReq = draftStore.openCursor();
+          cursorReq.onsuccess = () => {
+            const cursor = cursorReq.result;
+            if (cursor) {
+              const draft = cursor.value;
+              if (draft.hasAudio !== undefined) {
+                draft.audioCount = draft.hasAudio ? 1 : 0;
+                delete draft.hasAudio;
+                cursor.update(draft);
+              }
+              cursor.continue();
+            }
+          };
+        }
       }
     };
   });
@@ -87,9 +124,20 @@ export const deleteLocalDraft = async (id: string): Promise<void> => {
   const db = await initDB();
   return new Promise((resolve, reject) => {
     const transaction = db.transaction([DRAFTS_STORE, AUDIO_STORE], 'readwrite');
-    
+
     transaction.objectStore(DRAFTS_STORE).delete(id);
-    transaction.objectStore(AUDIO_STORE).delete(id);
+
+    const audioStore = transaction.objectStore(AUDIO_STORE);
+    const index = audioStore.index('draftId');
+    const range = IDBKeyRange.only(id);
+    const cursorReq = index.openCursor(range);
+    cursorReq.onsuccess = () => {
+      const cursor = cursorReq.result;
+      if (cursor) {
+        cursor.delete();
+        cursor.continue();
+      }
+    };
 
     transaction.oncomplete = () => {
       resolve();
@@ -100,12 +148,29 @@ export const deleteLocalDraft = async (id: string): Promise<void> => {
   });
 };
 
-export const getLocalAudio = async (draftId: string): Promise<LocalAudio | null> => {
+export const getLocalAudios = async (draftId: string): Promise<LocalAudio[]> => {
   const db = await initDB();
   return new Promise((resolve, reject) => {
     const transaction = db.transaction(AUDIO_STORE, 'readonly');
     const store = transaction.objectStore(AUDIO_STORE);
-    const request = store.get(draftId);
+    const index = store.index('draftId');
+    const request = index.getAll(draftId);
+
+    request.onsuccess = () => {
+      resolve(request.result || []);
+    };
+    request.onerror = () => {
+      reject(request.error);
+    };
+  });
+};
+
+export const getLocalAudio = async (audioId: string): Promise<LocalAudio | null> => {
+  const db = await initDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(AUDIO_STORE, 'readonly');
+    const store = transaction.objectStore(AUDIO_STORE);
+    const request = store.get(audioId);
 
     request.onsuccess = () => {
       resolve(request.result || null);
@@ -117,16 +182,18 @@ export const getLocalAudio = async (draftId: string): Promise<LocalAudio | null>
 };
 
 export const saveLocalAudio = async (
+  id: string,
   draftId: string,
   audioData: string,
   duration: number,
-  mimeType: string
+  mimeType: string,
+  createdAt: string
 ): Promise<void> => {
   const db = await initDB();
   return new Promise((resolve, reject) => {
     const transaction = db.transaction(AUDIO_STORE, 'readwrite');
     const store = transaction.objectStore(AUDIO_STORE);
-    const request = store.put({ draftId, audioData, duration, mimeType });
+    const request = store.put({ id, draftId, audioData, duration, mimeType, createdAt });
 
     request.onsuccess = () => {
       resolve();
@@ -137,12 +204,12 @@ export const saveLocalAudio = async (
   });
 };
 
-export const deleteLocalAudio = async (draftId: string): Promise<void> => {
+export const deleteLocalAudio = async (audioId: string): Promise<void> => {
   const db = await initDB();
   return new Promise((resolve, reject) => {
     const transaction = db.transaction(AUDIO_STORE, 'readwrite');
     const store = transaction.objectStore(AUDIO_STORE);
-    const request = store.delete(draftId);
+    const request = store.delete(audioId);
 
     request.onsuccess = () => {
       resolve();
@@ -151,4 +218,9 @@ export const deleteLocalAudio = async (draftId: string): Promise<void> => {
       reject(request.error);
     };
   });
+};
+
+export const getLocalAudioCount = async (draftId: string): Promise<number> => {
+  const audios = await getLocalAudios(draftId);
+  return audios.length;
 };

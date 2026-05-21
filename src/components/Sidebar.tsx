@@ -320,8 +320,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
                               >
                                 {draft.title || 'Untitled Song'}
                               </span>
-                              {draft.hasAudio && (
-                                <Mic className="w-3 h-3 text-terracotta flex-shrink-0" />
+                              {draft.audioCount > 0 && (
+                                <div className="flex items-center gap-1 text-terracotta flex-shrink-0">
+                                  <Mic className="w-3 h-3" />
+                                  <span className="text-[9px] font-mono">{draft.audioCount}</span>
+                                </div>
                               )}
                             </div>
                           )}
@@ -634,7 +637,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <AudioDemoArea
               draftId={activeDraft.id}
               isCloudMode={isCloudMode}
-              onAudioChange={(hasAudio) => updateActiveDraft({ hasAudio })}
+              onAudioChange={(audioCount) => updateActiveDraft({ audioCount })}
             />
           ) : (
             <div className="text-center py-8 text-xs text-ink-light select-none">

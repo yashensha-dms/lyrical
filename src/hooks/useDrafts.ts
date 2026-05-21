@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { getLocalDrafts, saveLocalDraft, deleteLocalDraft, getLocalAudio } from '../utils/indexedDb';
+import { getLocalDrafts, saveLocalDraft, deleteLocalDraft, getLocalAudios, getLocalAudioCount } from '../utils/indexedDb';
 
 export interface Draft {
   id: string;
@@ -7,7 +7,7 @@ export interface Draft {
   content: string;         // Lyric lines
   targetTemplate: string;  // Syllables schema (e.g. "8-6-8-6")
   scrapbook: string;       // Method songwriting scrapbook notes
-  hasAudio: boolean;       // Flag indicating if voice demo exists
+  audioCount: number;      // Number of voice recordings
   syllableTolerance?: number;
   createdAt: number;
   updatedAt: number;
@@ -38,7 +38,7 @@ But we're holding on tonight`,
 
 SONG ASSISTANT NOTES:
 - The singer told me they feel like they are just waiting for a signal that never comes. Use "reception", "signal", "radio frequency" metaphors in Verse 2.`,
-    hasAudio: false,
+      audioCount: 0,
     createdAt: Date.now() - 3600000,
     updatedAt: Date.now() - 3600000,
   }
@@ -123,7 +123,7 @@ export function useDrafts() {
             content: d.content,
             targetTemplate: d.targetTemplate,
             scrapbook: d.scrapbook,
-            hasAudio: d.hasAudio || false,
+            audioCount: d.audioCount || 0,
             syllableTolerance: d.syllableTolerance ?? 1,
             createdAt: Date.parse(d.createdAt) || Date.now(),
             updatedAt: Date.parse(d.updatedAt) || Date.now()
@@ -134,17 +134,17 @@ export function useDrafts() {
       } catch (e) {
         console.error('Failed to load drafts from server, falling back to local database', e);
         const local = await getLocalDrafts();
-        loaded = local.map(d => ({
+        loaded = await Promise.all(local.map(async d => ({
           id: d.id,
           title: d.title,
           content: d.content,
           scrapbook: d.scrapbook,
           targetTemplate: d.targetTemplate,
-          hasAudio: d.hasAudio || false,
+          audioCount: d.audioCount !== undefined ? d.audioCount : await getLocalAudioCount(d.id),
           syllableTolerance: d.syllableTolerance ?? 1,
           createdAt: Date.parse(d.createdAt) || Date.now(),
           updatedAt: d.updatedAt ? Date.parse(d.updatedAt) : Date.now()
-        }));
+        })));
         if (loaded.length === 0) loaded = DEFAULT_DRAFTS;
       }
     } else {
@@ -160,7 +160,7 @@ export function useDrafts() {
               content: d.content,
               scrapbook: d.scrapbook,
               targetTemplate: d.targetTemplate,
-              hasAudio: d.hasAudio,
+              audioCount: d.audioCount,
               syllableTolerance: d.syllableTolerance,
               createdAt: new Date(d.createdAt).toISOString(),
               updatedAt: new Date(d.updatedAt).toISOString()
@@ -168,17 +168,17 @@ export function useDrafts() {
           }
           loaded = DEFAULT_DRAFTS;
         } else {
-          loaded = local.map(d => ({
+          loaded = await Promise.all(local.map(async d => ({
             id: d.id,
             title: d.title,
             content: d.content,
             scrapbook: d.scrapbook,
             targetTemplate: d.targetTemplate,
-            hasAudio: d.hasAudio || false,
+            audioCount: d.audioCount !== undefined ? d.audioCount : await getLocalAudioCount(d.id),
             syllableTolerance: d.syllableTolerance ?? 1,
             createdAt: Date.parse(d.createdAt) || Date.now(),
             updatedAt: d.updatedAt ? Date.parse(d.updatedAt) : Date.now()
-          }));
+          })));
         }
       } catch (e) {
         console.error('IndexedDB load failed', e);
@@ -202,7 +202,7 @@ export function useDrafts() {
             content: d.content,
             targetTemplate: d.targetTemplate,
             scrapbook: d.scrapbook,
-            hasAudio: d.hasAudio || false,
+            audioCount: d.audioCount || 0,
             syllableTolerance: d.syllableTolerance ?? 1,
             createdAt: Date.parse(d.createdAt) || Date.now(),
             updatedAt: Date.parse(d.updatedAt) || Date.now()
@@ -215,7 +215,7 @@ export function useDrafts() {
             content: sharedDraft.content,
             scrapbook: sharedDraft.scrapbook,
             targetTemplate: sharedDraft.targetTemplate,
-            hasAudio: sharedDraft.hasAudio,
+            audioCount: sharedDraft.audioCount,
             syllableTolerance: sharedDraft.syllableTolerance,
             createdAt: new Date(sharedDraft.createdAt).toISOString(),
             updatedAt: new Date(sharedDraft.updatedAt).toISOString()
@@ -327,7 +327,7 @@ export function useDrafts() {
     activeDraft?.scrapbook,
     activeDraft?.targetTemplate,
     activeDraft?.syllableTolerance,
-    activeDraft?.hasAudio,
+    activeDraft?.audioCount,
     isCloudMode
   ]);
 
@@ -344,7 +344,7 @@ export function useDrafts() {
       content: '',
       targetTemplate: '',
       scrapbook: '',
-      hasAudio: false,
+    audioCount: 0,
       syllableTolerance: 1,
       createdAt: Date.now(),
       updatedAt: Date.now()
@@ -441,9 +441,9 @@ export function useDrafts() {
       if (res.ok) {
         // Sync any recorded audio blobs
         for (const draft of local) {
-          if (draft.hasAudio) {
-            const localAudio = await getLocalAudio(draft.id);
-            if (localAudio) {
+          if (draft.audioCount > 0) {
+            const localAudios = await getLocalAudios(draft.id);
+            for (const localAudio of localAudios) {
               await fetch(`/api/drafts/${draft.id}/audio`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -470,7 +470,7 @@ export function useDrafts() {
             content: d.content,
             targetTemplate: d.targetTemplate,
             scrapbook: d.scrapbook,
-            hasAudio: d.hasAudio || false,
+            audioCount: d.audioCount || 0,
             syllableTolerance: d.syllableTolerance ?? 1,
             createdAt: Date.parse(d.createdAt) || Date.now(),
             updatedAt: Date.parse(d.updatedAt) || Date.now()
@@ -560,7 +560,7 @@ export function useDrafts() {
       content: remoteDraft.content,
       scrapbook: remoteDraft.scrapbook,
       targetTemplate: remoteDraft.targetTemplate,
-      hasAudio: remoteDraft.hasAudio,
+      audioCount: remoteDraft.audioCount,
       syllableTolerance: remoteDraft.syllableTolerance,
       createdAt: new Date(remoteDraft.createdAt).toISOString(),
       updatedAt: new Date(remoteDraft.updatedAt).toISOString()
@@ -592,7 +592,7 @@ export function useDrafts() {
           content: d.content,
           targetTemplate: d.targetTemplate,
           scrapbook: d.scrapbook,
-          hasAudio: d.hasAudio || false,
+          audioCount: d.audioCount || 0,
           syllableTolerance: d.syllableTolerance ?? 1,
           createdAt: Date.parse(d.createdAt) || Date.now(),
           updatedAt: Date.parse(d.updatedAt) || Date.now()
@@ -620,7 +620,7 @@ export function useDrafts() {
               content: serverDraft.content,
               scrapbook: serverDraft.scrapbook,
               targetTemplate: serverDraft.targetTemplate,
-              hasAudio: serverDraft.hasAudio,
+              audioCount: serverDraft.audioCount,
               syllableTolerance: serverDraft.syllableTolerance,
               createdAt: new Date(serverDraft.createdAt).toISOString(),
               updatedAt: new Date(serverDraft.updatedAt).toISOString()

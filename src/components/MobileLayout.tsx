@@ -82,7 +82,7 @@ export const MobileLayout: React.FC<MobileLayoutProps> = ({
   ];
 
   return (
-    <div className="w-screen h-screen flex flex-col bg-paper text-ink font-sans select-none overflow-hidden">
+    <div className="w-screen h-dvh flex flex-col bg-paper text-ink font-sans select-none overflow-hidden">
 
       {/* ── Mobile Header ── */}
       <header className={`h-12 w-full bg-paper-dark border-b border-paper-darker flex items-center justify-between px-4 flex-shrink-0 transition-opacity duration-500 ${
