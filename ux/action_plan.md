@@ -45,11 +45,3 @@ This plan maps implemented features from **v1.0** and **v2.0** alongside future 
 ### v2.5.0 (Conversational Phrase Catcher)
 #### Improvements
 * **Conversational Phrase Catcher (Justin Tranter / Cara DioGuardi):** Collapsible panel at the bottom of the Songs explorer list to log overheard phrases, ideas, and casual dialogue. Persistent in `localStorage`. Offers quick actions to start new songs, append to active scrapbook, copy to clipboard, or delete.
-
----
-
-## Suggested Features (From Personas)
-
-### Major Features
-* **The "Dare to Suck" Lyric Graveyard (Max Martin / Ed Sheeran):**
-  * *Description:* A non-destructive edit vault. Removed lines and cut text blocks are pushed into a bottom drawer or sidebar panel so writers never feel the pressure of permanent deletion.
