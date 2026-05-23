@@ -38,6 +38,9 @@ function App() {
   // Selected word for rhyme lookup
   const [selectedWord, setSelectedWord] = useState('');
 
+  // Callback function to replace the selected word in the active draft
+  const [replaceWordFn, setReplaceWordFn] = useState<((word: string) => void) | null>(null);
+
   // Subconscious writing mode focus state
   const [subconsciousActive, setSubconsciousActive] = useState(false);
 
@@ -187,6 +190,7 @@ function App() {
             syllableTolerance={activeDraft.syllableTolerance ?? 1}
             updateActiveDraft={updateActiveDraft}
             setSelectedWord={setSelectedWord}
+            onRegisterReplace={setReplaceWordFn}
             remoteDraft={remoteDraft}
             setIsEditorFocused={setIsEditorFocused}
             syncActiveDraftWithRemote={syncActiveDraftWithRemote}
@@ -212,11 +216,7 @@ function App() {
           }`}>
             <RightPanel
               selectedWord={selectedWord}
-              content={activeDraft.content}
-              targetTemplate={activeDraft.targetTemplate}
-              syllableTolerance={activeDraft.syllableTolerance ?? 1}
-              updateActiveDraft={updateActiveDraft}
-              setIsRightPanelOpen={setIsRightPanelOpen}
+              onReplaceSelectedWord={replaceWordFn || (() => {})}
             />
           </div>
         )}

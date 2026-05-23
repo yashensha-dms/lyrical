@@ -53,6 +53,9 @@ export const MobileLayout: React.FC<MobileLayoutProps> = ({
   const [activeTab, setActiveTab] = useState<MobileTab>('write');
   const [activePanel, setActivePanel] = useState<'explorer' | 'scrapbook' | 'audio' | 'catcher' | 'settings'>('explorer');
   const [selectedWord, setSelectedWord] = useState('');
+  
+  // Callback function to replace the selected word in the active draft
+  const [replaceWordFn, setReplaceWordFn] = useState<((word: string) => void) | null>(null);
 
   // When a draft is selected on Library tab, switch to Write
   const handleSelectDraft = (id: string) => {
@@ -179,6 +182,7 @@ export const MobileLayout: React.FC<MobileLayoutProps> = ({
                 syllableTolerance={activeDraft.syllableTolerance ?? 1}
                 updateActiveDraft={updateActiveDraft}
                 setSelectedWord={setSelectedWord}
+                onRegisterReplace={setReplaceWordFn}
                 remoteDraft={remoteDraft}
                 setIsEditorFocused={setIsEditorFocused}
                 syncActiveDraftWithRemote={syncActiveDraftWithRemote}
@@ -235,12 +239,8 @@ export const MobileLayout: React.FC<MobileLayoutProps> = ({
             {activeDraft ? (
               <RightPanel
                 selectedWord={selectedWord}
-                content={activeDraft.content}
-                targetTemplate={activeDraft.targetTemplate}
-                syllableTolerance={activeDraft.syllableTolerance ?? 1}
-                updateActiveDraft={updateActiveDraft}
-                setIsRightPanelOpen={() => {}} // no-op on mobile
                 isMobile={true}
+                onReplaceSelectedWord={replaceWordFn || (() => {})}
               />
             ) : (
               <div className="flex-1 h-full bg-paper flex flex-col items-center justify-center text-ink-light gap-3 p-8 text-center">

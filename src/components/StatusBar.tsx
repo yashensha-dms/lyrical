@@ -74,7 +74,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({
         <span className="text-ink-light">|</span>
 
         {/* Network Status */}
-        <div className="flex items-center gap-1" title={isOnline ? 'Rhyme service online' : 'Offline - Rhymes disabled'}>
+        <div className="flex items-center gap-1" title={isOnline ? 'Cloud database online' : 'Offline - local storage mode'}>
           {isOnline ? (
             <>
               <Cloud className="w-3 h-3 text-emerald-600" />

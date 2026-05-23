@@ -8,24 +8,24 @@ export default {
     extend: {
       colors: {
         paper: {
-          DEFAULT: '#FAF8F5',   // warm, soft cream background
-          dark: '#F3F0EA',      // slightly darker sand for sidebar
-          darker: '#EBE5DC',    // borders, active tabs, divider lines
-          active: '#E4DDD2',    // darker hover states
+          DEFAULT: '#FAF8F5',   // warm off-white parchment
+          dark: '#F2EFE9',      // slightly deeper warm white for sidebars/panels
+          darker: '#E4DDD4',    // warm stone border
+          active: '#EDE8E1',    // hover/active state
         },
         ink: {
-          DEFAULT: '#2C2A29',   // warm charcoal for readability
-          muted: '#6E6A64',     // medium gray for icons and secondary text
-          light: '#A5A097',     // light gray for line numbers and placeholders
+          DEFAULT: '#2C2A29',   // warm near-black
+          muted: '#7A736A',     // warm medium gray
+          light: '#B0A89E',     // warm light gray for gutters/placeholders
         },
         terracotta: {
-          DEFAULT: '#C2593F',   // soft earth red for primary button/accents
-          hover: '#A3452F',
-          light: '#F8EBE8',
+          DEFAULT: '#C0694E',   // warm terracotta red
+          hover: '#A8553C',     // darker terracotta on hover
+          light: '#FDF0EC',     // light blush tint for alert backgrounds
         },
         amber: {
-          DEFAULT: '#D97706',   // warm yellow for warning highlights
-          light: '#FEF3C7',     // soft highlight background
+          DEFAULT: '#C97A1A',   // warm amber/gold
+          light: '#FEF6E4',     // soft cream amber alert
         }
       },
       fontFamily: {

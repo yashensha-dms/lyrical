@@ -267,10 +267,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     tabIndex={isDeleting ? -1 : 0}
                     className={`group flex items-center justify-between px-3 py-2 rounded-md select-none transition-all duration-200 ease-out border focus-visible:ring-2 focus-visible:ring-terracotta focus:outline-none ${
                       isDeleting
-                        ? 'bg-red-50/50 border-red-200 text-red-700 font-medium'
+                        ? 'bg-red-950/20 border-red-900/50 text-red-400 font-medium'
                         : isActive
-                        ? 'bg-white text-ink font-semibold border-paper-darker border-l-2 border-l-terracotta shadow-paper-sm -translate-y-[1px] cursor-pointer'
-                        : 'text-ink-muted hover:text-ink hover:bg-white hover:border-paper-darker border-transparent hover:shadow-paper-sm hover:-translate-y-[1px] cursor-pointer'
+                        ? 'bg-paper-dark text-ink font-semibold border-paper-darker border-l-2 border-l-terracotta shadow-paper-sm -translate-y-[1px] cursor-pointer'
+                        : 'text-ink-muted hover:text-ink hover:bg-paper-darker hover:border-paper-darker border-transparent hover:shadow-paper-sm hover:-translate-y-[1px] cursor-pointer'
                     }`}
                   >
                     {isDeleting ? (
@@ -419,7 +419,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 placeholder="Search snippets..."
                 value={catcherSearchQuery}
                 onChange={(e) => setCatcherSearchQuery(e.target.value)}
-                className="w-full bg-white border border-paper-darker rounded-lg pl-8 pr-7 py-1.5 text-xs text-ink placeholder-ink-light/80 focus:outline-none focus:border-terracotta/50 focus:ring-1 focus:ring-terracotta/20 transition-all"
+                className="w-full bg-paper border border-paper-darker rounded-lg pl-8 pr-7 py-1.5 text-xs text-ink placeholder-ink-light/80 focus:outline-none focus:border-terracotta/50 focus:ring-1 focus:ring-terracotta/20 transition-all"
               />
               {catcherSearchQuery && (
                 <button
@@ -433,13 +433,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </div>
 
             {/* Unified Input + Embedded Catch Button */}
-            <form onSubmit={handleAddPhrase} className="flex-shrink-0 select-none bg-white/40 p-2.5 border border-paper-darker rounded-xl flex flex-col gap-2.5">
+            <form onSubmit={handleAddPhrase} className="flex-shrink-0 select-none bg-paper-dark/40 p-2.5 border border-paper-darker rounded-xl flex flex-col gap-2.5">
               <textarea
                 rows={5}
                 placeholder="Capture overheard phrase, dialogue, or hook idea..."
                 value={newPhraseText}
                 onChange={(e) => setNewPhraseText(e.target.value)}
-                className="w-full bg-white border border-paper-darker rounded-lg p-2.5 text-xs text-ink placeholder-ink-light/70 focus:outline-none focus:border-terracotta/40 focus:ring-2 focus:ring-terracotta/15 transition resize-none"
+                className="w-full bg-paper border border-paper-darker rounded-lg p-2.5 text-xs text-ink placeholder-ink-light/70 focus:outline-none focus:border-terracotta/40 focus:ring-2 focus:ring-terracotta/15 transition resize-none"
                 aria-label="Overheard phrase or hook idea"
               />
 
@@ -482,7 +482,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   
                   if (isEditing) {
                     return (
-                      <div key={phrase.id} className="bg-white border border-terracotta/40 rounded-xl p-3 flex flex-col gap-2 shadow-paper-sm">
+                      <div key={phrase.id} className="bg-paper-dark border border-terracotta/40 rounded-xl p-3 flex flex-col gap-2 shadow-paper-sm">
                         <textarea
                           value={editingPhraseText}
                           onChange={(e) => setEditingPhraseText(e.target.value)}
@@ -512,7 +512,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   return (
                     <div
                       key={phrase.id}
-                      className="group relative flex flex-col bg-white border border-paper-darker rounded-xl p-3.5 transition-all duration-300 hover:border-terracotta/30 hover:shadow-paper-md hover:-translate-y-[1.5px] focus-within:border-terracotta/20 overflow-hidden"
+                      className="group relative flex flex-col bg-paper-dark border border-paper-darker rounded-xl p-3.5 transition-all duration-300 hover:border-terracotta/30 hover:shadow-paper-md hover:-translate-y-[1.5px] focus-within:border-terracotta/20 overflow-hidden"
                     >
                       {/* Subtle decorative Quote background icon */}
                       <Quote className="absolute right-3 top-3 w-8 h-8 text-terracotta/[0.04] pointer-events-none select-none" />

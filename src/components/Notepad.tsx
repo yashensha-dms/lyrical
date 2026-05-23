@@ -3,7 +3,6 @@ import { AlertCircle, Brain, Timer, ChevronDown, X, Share2, Check } from 'lucide
 import { countLineSyllables } from '../utils/syllables';
 import type { Draft } from '../hooks/useDrafts';
 import { HighlightingTextarea } from './HighlightingTextarea';
-import { scanComplexity } from '../utils/simplifier';
 
 interface NotepadProps {
   draftId: string;
@@ -13,12 +12,14 @@ interface NotepadProps {
   syllableTolerance: number;
   updateActiveDraft: (updates: Partial<Omit<Draft, 'id' | 'createdAt'>>) => void;
   setSelectedWord: (word: string) => void;
+  onRegisterReplace: (callback: (word: string) => void) => void;
   remoteDraft: Draft | null;
   setIsEditorFocused: (focused: boolean) => void;
   syncActiveDraftWithRemote: () => void;
   isCloudMode: boolean;
   onSubconsciousActiveChange?: (active: boolean) => void;
   isMobile?: boolean;
+  simplicityAlerts?: { word: string; index: number }[];
 }
 
 export const Notepad: React.FC<NotepadProps> = ({
@@ -29,18 +30,18 @@ export const Notepad: React.FC<NotepadProps> = ({
   syllableTolerance,
   updateActiveDraft,
   setSelectedWord,
+  onRegisterReplace,
   remoteDraft,
   setIsEditorFocused,
   syncActiveDraftWithRemote,
   isCloudMode,
   onSubconsciousActiveChange,
   isMobile = false,
+  simplicityAlerts = [],
 }) => {
   const gutterRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-
-  // Compute conversational complexity highlights
-  const highlights = React.useMemo(() => scanComplexity(content), [content]);
+  const lastSelectionRef = useRef<{ start: number; end: number } | null>(null);
 
   // Subconscious Blind Timer States
   const [subconsciousActive, setSubconsciousActive] = useState(false);
@@ -275,8 +276,32 @@ export const Notepad: React.FC<NotepadProps> = ({
     // Only trigger rhyme search if it's a single word without spaces/numbers
     if (selectedText && !/\s/.test(selectedText) && /^[a-zA-Z']+$/.test(selectedText)) {
       setSelectedWord(selectedText);
+      lastSelectionRef.current = { start, end };
     }
   };
+
+  const replaceWord = useCallback((replacement: string) => {
+    if (!lastSelectionRef.current) return;
+    const { start, end } = lastSelectionRef.current;
+    const before = content.substring(0, start);
+    const after = content.substring(end);
+    updateActiveDraft({ content: before + replacement + after });
+    
+    setSelectedWord('');
+    lastSelectionRef.current = null;
+    if (textareaRef.current) {
+      textareaRef.current.focus();
+      const newCursorPos = start + replacement.length;
+      setTimeout(() => {
+        textareaRef.current?.setSelectionRange(newCursorPos, newCursorPos);
+      }, 50);
+    }
+  }, [content, updateActiveDraft, setSelectedWord]);
+
+  useEffect(() => {
+    onRegisterReplace(replaceWord);
+    return () => onRegisterReplace(() => {});
+  }, [replaceWord, onRegisterReplace]);
 
   // Keep focus on editor when clicking surrounding canvas areas
   const focusEditor = () => {
@@ -285,14 +310,10 @@ export const Notepad: React.FC<NotepadProps> = ({
     }
   };
 
-  const handleReplace = (index: number, word: string, replacement: string) => {
-    const before = content.substring(0, index);
-    const after = content.substring(index + word.length);
-    updateActiveDraft({ content: before + replacement + after });
-  };
+
 
   return (
-    <div className="flex-1 h-full bg-paper flex flex-col min-w-0" onClick={focusEditor}>
+    <div className="flex-1 h-full bg-paper paper-lines flex flex-col min-w-0" onClick={focusEditor}>
       {/* Subconscious & Share Mode Control */}
       <div
         className={`${isMobile ? 'px-4 py-2' : 'px-8 py-3'} bg-paper border-b border-paper-darker flex items-center justify-end gap-4 select-none flex-shrink-0 relative`}
@@ -322,7 +343,7 @@ export const Notepad: React.FC<NotepadProps> = ({
               className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-semibold border transition cursor-pointer select-none ${
                 copied
                   ? 'bg-[#10B981] border-[#10B981] text-white hover:bg-[#059669]'
-                  : 'border-paper-darker text-ink-muted hover:border-terracotta/40 hover:text-terracotta bg-white'
+                  : 'border-paper-darker text-ink-muted hover:border-terracotta/40 hover:text-terracotta bg-paper-dark'
               }`}
               title="Copy shareable link to clipboard"
             >
@@ -352,7 +373,7 @@ export const Notepad: React.FC<NotepadProps> = ({
                 className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-semibold border transition cursor-pointer select-none ${
                   showPresets 
                     ? 'bg-terracotta border-terracotta text-white' 
-                    : 'border-paper-darker text-ink-muted hover:border-terracotta/40 hover:text-terracotta'
+                    : 'border-paper-darker text-ink-muted hover:border-terracotta/40 hover:text-terracotta bg-paper-dark'
                 }`}
               >
                 <Brain className="w-3.5 h-3.5" />
@@ -362,7 +383,7 @@ export const Notepad: React.FC<NotepadProps> = ({
 
               {/* Preset Selector Dropdown */}
               {showPresets && (
-                <div className="absolute right-0 top-full mt-1.5 w-48 bg-white border border-paper-darker rounded-lg shadow-lg py-1.5 z-50">
+                <div className="absolute right-0 top-full mt-1.5 w-48 bg-paper border border-paper-darker rounded-lg shadow-paper-md py-1.5 z-50">
                   <div className="px-3 py-1.5 text-[10px] font-bold text-ink-muted uppercase tracking-wider border-b border-paper-darker mb-1">
                     Select writing time
                   </div>
@@ -370,7 +391,7 @@ export const Notepad: React.FC<NotepadProps> = ({
                     <button
                       key={preset.value}
                       onClick={() => handleStartSession(preset.value)}
-                      className="w-full text-left px-3 py-1.5 text-xs text-ink hover:bg-paper-dark transition flex items-center justify-between cursor-pointer"
+                      className="w-full text-left px-3 py-1.5 text-xs text-ink hover:bg-paper-active transition flex items-center justify-between cursor-pointer"
                     >
                       <span>{preset.label}</span>
                       <span className="text-[10px] text-ink-muted font-mono">{formatTime(preset.value)}</span>
@@ -424,7 +445,7 @@ export const Notepad: React.FC<NotepadProps> = ({
         {!isMobile && (
           <div
             ref={gutterRef}
-            className="w-16 bg-paper-dark/30 border-r border-paper-darker/60 flex flex-col overflow-hidden select-none pointer-events-none text-[11px] font-mono text-ink-light flex-shrink-0 py-6"
+            className="w-16 bg-paper-dark/50 border-r border-paper-darker flex flex-col overflow-hidden select-none pointer-events-none text-[11px] font-mono text-ink-light flex-shrink-0 py-6"
           >
             {(() => {
               let lyricLineCount = 0;
@@ -506,8 +527,6 @@ export const Notepad: React.FC<NotepadProps> = ({
             ref={textareaRef}
             value={content}
             onChange={(val) => updateActiveDraft({ content: val })}
-            highlights={highlights}
-            onReplace={handleReplace}
             onFocus={() => setIsEditorFocused(true)}
             onBlur={() => setIsEditorFocused(false)}
             onScroll={handleScroll}
@@ -518,6 +537,7 @@ export const Notepad: React.FC<NotepadProps> = ({
             placeholder={subconsciousActive ? "Keep typing, don't stop, don't look back..." : "Write your lyrics here..."}
             subconsciousActive={subconsciousActive}
             isMobile={isMobile}
+            simplicityAlerts={simplicityAlerts}
           />
         </div>
       </div>

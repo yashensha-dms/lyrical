@@ -297,6 +297,27 @@ app.post('/api/sync', requireDb, async (req, res) => {
   }
 });
 
+// Get pop associations (rhymes + co-occurrences) from Python NLP server
+app.get('/api/pop-associations', async (req, res) => {
+  const queryWord = req.query.word?.toString().toLowerCase().trim();
+  if (!queryWord) {
+    return res.status(400).json({ error: 'Word parameter is required' });
+  }
+  
+  try {
+    const response = await fetch(`http://127.0.0.1:5002/api/analyze-word?word=${encodeURIComponent(queryWord)}`);
+    if (!response.ok) {
+      throw new Error(`Python NLP server returned status ${response.status}`);
+    }
+    const data = await response.json();
+    res.json(data);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+
+
 // Serve frontend build in production
 const __dirname = path.resolve();
 app.use(express.static(path.join(__dirname, 'dist')));

@@ -13,10 +13,10 @@ input, textarea, [contenteditable="true"] {
   @apply select-text;
 }
 
-/* Custom minimal scrollbar to match paper aesthetic */
+/* Custom minimal scrollbar — warm parchment aesthetic */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
@@ -24,18 +24,19 @@ input, textarea, [contenteditable="true"] {
 }
 
 ::-webkit-scrollbar-thumb {
-  background-color: #E2DBD0;
+  background-color: #C9C1B8;
   border-radius: 4px;
-  border: 2px solid #FAF8F5;
+  border: 2px solid transparent;
+  background-clip: padding-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background-color: #C6BCB0;
+  background-color: #A89E95;
 }
 
 /* Focus ring override for smooth writing */
 *:focus-visible {
-  outline: 2px solid #C2593F;
+  outline: 2px solid #C0694E;
   outline-offset: 1px;
 }
 
@@ -48,8 +49,32 @@ textarea:focus-visible,
 /* Subconscious Blind Writing Mode */
 .subconscious-blind-mode {
   color: transparent !important;
-  text-shadow: 0 0 12px rgba(194, 89, 63, 0.65) !important;
+  text-shadow: 0 0 12px rgba(192, 105, 78, 0.45) !important;
   caret-color: transparent !important;
   user-select: none !important;
 }
 
+/* Subtle ruled-paper writing surface */
+.paper-lines {
+  background-image: linear-gradient(
+    to bottom,
+    transparent calc(32px - 1px),
+    rgba(192, 105, 78, 0.06) calc(32px - 1px),
+    rgba(192, 105, 78, 0.06) 32px,
+    transparent 32px
+  );
+  background-size: 100% 32px;
+}
+
+/* Section card shadow utility */
+.card-warm {
+  box-shadow:
+    0 1px 3px rgba(44, 42, 41, 0.06),
+    0 1px 2px rgba(44, 42, 41, 0.04);
+}
+
+.card-warm-md {
+  box-shadow:
+    0 4px 12px rgba(44, 42, 41, 0.08),
+    0 1px 4px rgba(44, 42, 41, 0.04);
+}
