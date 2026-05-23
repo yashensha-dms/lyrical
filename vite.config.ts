@@ -11,9 +11,9 @@ export default defineConfig({
       manifest: {
         name: "Lyrical — Songwriter's Notepad",
         short_name: 'Lyrical',
-        description: 'A songwriter\'s notepad for drafting lyrics and recording audio memos',
-        theme_color: '#1a1a2e',
-        background_color: '#0f0f1a',
+        description: "A songwriter's notepad for drafting lyrics and recording audio memos",
+        theme_color: '#FAF8F5',
+        background_color: '#FAF8F5',
         display: 'standalone',
         orientation: 'portrait',
         scope: '/',
@@ -45,6 +45,11 @@ export default defineConfig({
     proxy: {
       '/api': {
         target: 'http://localhost:5001',
+        changeOrigin: true,
+      },
+      '/ws': {
+        target: 'ws://localhost:5001',
+        ws: true,
         changeOrigin: true,
       }
     }

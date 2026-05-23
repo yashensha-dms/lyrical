@@ -3,6 +3,8 @@ import cors from 'cors';
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
 import path from 'path';
+import http from 'http';
+import { WebSocketServer, WebSocket } from 'ws';
 import { DraftModel, AudioMemoModel } from './models';
 
 dotenv.config();
@@ -12,7 +14,7 @@ const PORT = process.env.PORT || 5001;
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/lyrical';
 
 app.use(cors());
-app.use(express.json({ limit: '50mb' })); // Increase limit to allow base64 audio uploads
+app.use(express.json({ limit: '50mb' }));
 
 let isDbConnected = false;
 
@@ -30,9 +32,79 @@ const connectDb = async () => {
 
 connectDb();
 
-// Re-try database connection if check health requested
+// ── WebSocket Server ────────────────────────────────────────────────────────
+// Rooms: Map<draftId, Set<{ws, clientId}>>
+interface RoomClient {
+  ws: WebSocket;
+  clientId: string;
+}
+
+const rooms = new Map<string, Set<RoomClient>>();
+
+const httpServer = http.createServer(app);
+const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
+
+wss.on('connection', (ws) => {
+  let currentRoom: string | null = null;
+  let currentClientId: string | null = null;
+
+  ws.on('message', (raw) => {
+    let msg: any;
+    try {
+      msg = JSON.parse(raw.toString());
+    } catch {
+      return;
+    }
+
+    if (msg.type === 'join') {
+      // Leave existing room if any
+      if (currentRoom) {
+        const room = rooms.get(currentRoom);
+        if (room) {
+          room.forEach((c) => { if (c.clientId === currentClientId) room.delete(c); });
+          if (room.size === 0) rooms.delete(currentRoom);
+        }
+      }
+
+      currentRoom = msg.draftId;
+      currentClientId = msg.clientId;
+
+      if (!rooms.has(currentRoom)) {
+        rooms.set(currentRoom, new Set());
+      }
+      rooms.get(currentRoom)!.add({ ws, clientId: currentClientId! });
+
+    } else if (msg.type === 'update') {
+      // Relay to all OTHER clients in the same room
+      if (!currentRoom) return;
+      const room = rooms.get(currentRoom);
+      if (!room) return;
+
+      const payload = JSON.stringify(msg);
+      room.forEach((client) => {
+        if (client.clientId !== currentClientId && client.ws.readyState === WebSocket.OPEN) {
+          client.ws.send(payload);
+        }
+      });
+    }
+  });
+
+  ws.on('close', () => {
+    if (currentRoom) {
+      const room = rooms.get(currentRoom);
+      if (room) {
+        room.forEach((c) => { if (c.clientId === currentClientId) room.delete(c); });
+        if (room.size === 0) rooms.delete(currentRoom);
+      }
+    }
+  });
+});
+
+console.log(`WebSocket server attached at /ws`);
+
+// ── REST API ────────────────────────────────────────────────────────────────
+
 app.get('/api/health', async (req, res) => {
-  // If not connected, attempt reconnect on check
   if (!isDbConnected) {
     try {
       if (mongoose.connection.readyState === 0) {
@@ -44,14 +116,12 @@ app.get('/api/health', async (req, res) => {
       isDbConnected = false;
     }
   }
-  
   res.json({
     status: 'ok',
     database: isDbConnected ? 'connected' : 'disconnected'
   });
 });
 
-// Middleware to guard database routes if DB is offline
 const requireDb = (req: express.Request, res: express.Response, next: express.NextFunction) => {
   if (!isDbConnected) {
     return res.status(503).json({ error: 'Database is offline' });
@@ -59,7 +129,7 @@ const requireDb = (req: express.Request, res: express.Response, next: express.Ne
   next();
 };
 
-// 1. Get all drafts (excluding heavy audio data)
+// 1. Get all drafts
 app.get('/api/drafts', requireDb, async (req, res) => {
   try {
     const drafts = await DraftModel.find();
@@ -117,7 +187,7 @@ app.post('/api/drafts', requireDb, async (req, res) => {
   if (!id) {
     return res.status(400).json({ error: 'Missing draft id' });
   }
-  
+
   try {
     const newDraft = new DraftModel({
       _id: id,
@@ -128,7 +198,7 @@ app.post('/api/drafts', requireDb, async (req, res) => {
       syllableTolerance: syllableTolerance !== undefined ? syllableTolerance : 1,
     });
     await newDraft.save();
-    
+
     res.status(201).json({
       id: newDraft._id,
       title: newDraft.title,
@@ -149,21 +219,21 @@ app.post('/api/drafts', requireDb, async (req, res) => {
 app.put('/api/drafts/:id', requireDb, async (req, res) => {
   const { id } = req.params;
   const updates = req.body;
-  
+
   try {
     const draft = await DraftModel.findById(id);
     if (!draft) {
       return res.status(404).json({ error: 'Draft not found' });
     }
-    
+
     if (updates.title !== undefined) draft.title = updates.title;
     if (updates.content !== undefined) draft.content = updates.content;
     if (updates.scrapbook !== undefined) draft.scrapbook = updates.scrapbook;
     if (updates.targetTemplate !== undefined) draft.targetTemplate = updates.targetTemplate;
     if (updates.syllableTolerance !== undefined) draft.syllableTolerance = updates.syllableTolerance;
-    
+
     await draft.save();
-    
+
     res.json({
       id: draft._id,
       title: draft.title,
@@ -179,10 +249,10 @@ app.put('/api/drafts/:id', requireDb, async (req, res) => {
   }
 });
 
-// 5. Delete a draft (and all associated audio memos)
+// 5. Delete a draft
 app.delete('/api/drafts/:id', requireDb, async (req, res) => {
   const { id } = req.params;
-  
+
   try {
     await DraftModel.findByIdAndDelete(id);
     await AudioMemoModel.deleteMany({ draftId: id });
@@ -192,10 +262,10 @@ app.delete('/api/drafts/:id', requireDb, async (req, res) => {
   }
 });
 
-// 6. List all audio memos (summaries without data) for a draft
+// 6. List all audio memos for a draft
 app.get('/api/drafts/:id/audios', requireDb, async (req, res) => {
   const { id } = req.params;
-  
+
   try {
     const memos = await AudioMemoModel.find({ draftId: id }, 'draftId duration mimeType createdAt');
     res.json(memos.map(m => ({
@@ -210,10 +280,10 @@ app.get('/api/drafts/:id/audios', requireDb, async (req, res) => {
   }
 });
 
-// 7. Get a specific audio memo with data
+// 7. Get a specific audio memo
 app.get('/api/drafts/:id/audio/:audioId', requireDb, async (req, res) => {
   const { audioId } = req.params;
-  
+
   try {
     const memo = await AudioMemoModel.findById(audioId);
     if (!memo) {
@@ -232,15 +302,15 @@ app.get('/api/drafts/:id/audio/:audioId', requireDb, async (req, res) => {
   }
 });
 
-// 8. Create a new audio memo for a draft
+// 8. Create a new audio memo
 app.post('/api/drafts/:id/audio', requireDb, async (req, res) => {
   const { id } = req.params;
   const { audioData, duration, mimeType } = req.body;
-  
+
   if (!audioData || duration === undefined || !mimeType) {
     return res.status(400).json({ error: 'Missing required audio fields' });
   }
-  
+
   try {
     const memo = new AudioMemoModel({ draftId: id, audioData, duration, mimeType });
     await memo.save();
@@ -260,7 +330,7 @@ app.post('/api/drafts/:id/audio', requireDb, async (req, res) => {
 // 9. Delete a specific audio memo
 app.delete('/api/drafts/:id/audio/:audioId', requireDb, async (req, res) => {
   const { audioId } = req.params;
-  
+
   try {
     await AudioMemoModel.findByIdAndDelete(audioId);
     res.json({ success: true });
@@ -275,7 +345,7 @@ app.post('/api/sync', requireDb, async (req, res) => {
   if (!Array.isArray(drafts)) {
     return res.status(400).json({ error: 'Invalid sync payload' });
   }
-  
+
   try {
     for (const draft of drafts) {
       await DraftModel.findByIdAndUpdate(
@@ -297,13 +367,13 @@ app.post('/api/sync', requireDb, async (req, res) => {
   }
 });
 
-// Get pop associations (rhymes + co-occurrences) from Python NLP server
+// Get pop associations from Python NLP server
 app.get('/api/pop-associations', async (req, res) => {
   const queryWord = req.query.word?.toString().toLowerCase().trim();
   if (!queryWord) {
     return res.status(400).json({ error: 'Word parameter is required' });
   }
-  
+
   try {
     const response = await fetch(`http://127.0.0.1:5002/api/analyze-word?word=${encodeURIComponent(queryWord)}`);
     if (!response.ok) {
@@ -316,8 +386,6 @@ app.get('/api/pop-associations', async (req, res) => {
   }
 });
 
-
-
 // Serve frontend build in production
 const __dirname = path.resolve();
 app.use(express.static(path.join(__dirname, 'dist')));
@@ -329,6 +397,6 @@ app.get('*', (req, res, next) => {
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 
-app.listen(PORT, () => {
+httpServer.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
 });

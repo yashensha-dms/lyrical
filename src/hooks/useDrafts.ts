@@ -15,6 +15,9 @@ export interface Draft {
 
 const ACTIVE_DRAFT_KEY = 'lyrical_active_draft_id_v2';
 
+// Generate a stable client ID for this browser session
+const CLIENT_ID = `client-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
 const DEFAULT_DRAFTS: Draft[] = [
   {
     id: 'welcome-draft',
@@ -53,29 +56,147 @@ export function useDrafts() {
     return localStorage.getItem('lyrical_use_local_mode') === 'true';
   });
 
-  const [remoteDraft, setRemoteDraft] = useState<Draft | null>(null);
-  const [isEditorFocused, setIsEditorFocused] = useState(false);
-
   const draftsRef = useRef(drafts);
-  const isEditorFocusedRef = useRef(isEditorFocused);
+  const isEditorFocusedRef = useRef(false);
+  const wsRef = useRef<WebSocket | null>(null);
+  const wsRoomRef = useRef<string | null>(null);
 
   useEffect(() => {
     draftsRef.current = drafts;
   }, [drafts]);
 
-  useEffect(() => {
-    isEditorFocusedRef.current = isEditorFocused;
-  }, [isEditorFocused]);
-
   const isCloudMode = healthStatus === 'connected' && !useLocalMode;
+  const isCloudModeRef = useRef(isCloudMode);
+  useEffect(() => { isCloudModeRef.current = isCloudMode; }, [isCloudMode]);
 
-  // Save local mode state to storage
   const setUseLocalMode = useCallback((val: boolean) => {
     setUseLocalModeState(val);
     localStorage.setItem('lyrical_use_local_mode', String(val));
   }, []);
 
-  // Ping backend database health
+  const setIsEditorFocused = useCallback((v: boolean) => {
+    isEditorFocusedRef.current = v;
+  }, []);
+
+  // ── WebSocket ──────────────────────────────────────────────────────────────
+  const intentionalCloseRef = useRef(false);
+
+  const connectWs = useCallback((draftId: string) => {
+    // Already connected to this exact room — do nothing
+    if (
+      wsRef.current &&
+      wsRef.current.readyState === WebSocket.OPEN &&
+      wsRoomRef.current === draftId
+    ) {
+      return;
+    }
+
+    // Close previous connection intentionally
+    if (wsRef.current) {
+      intentionalCloseRef.current = true;
+      wsRef.current.close();
+      wsRef.current = null;
+    }
+
+    intentionalCloseRef.current = false;
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}/ws`;
+    const ws = new WebSocket(wsUrl);
+    wsRef.current = ws;
+    wsRoomRef.current = draftId;
+
+    ws.onopen = () => {
+      ws.send(JSON.stringify({ type: 'join', draftId, clientId: CLIENT_ID }));
+    };
+
+    ws.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        if (msg.type === 'update' && msg.draftId === wsRoomRef.current) {
+          setDrafts(prev =>
+            prev.map(d => {
+              if (d.id !== msg.draftId) return d;
+              return {
+                ...d,
+                ...(msg.title !== undefined && { title: msg.title }),
+                ...(msg.content !== undefined && { content: msg.content }),
+                ...(msg.scrapbook !== undefined && { scrapbook: msg.scrapbook }),
+                ...(msg.targetTemplate !== undefined && { targetTemplate: msg.targetTemplate }),
+                ...(msg.syllableTolerance !== undefined && { syllableTolerance: msg.syllableTolerance }),
+                updatedAt: msg.updatedAt ?? Date.now(),
+              };
+            })
+          );
+        }
+      } catch (e) {
+        console.error('WS message parse error:', e);
+      }
+    };
+
+    ws.onclose = () => {
+      // Only auto-reconnect if this was NOT an intentional close
+      if (!intentionalCloseRef.current && isCloudModeRef.current && wsRoomRef.current) {
+        const roomToReconnect = wsRoomRef.current;
+        setTimeout(() => {
+          // Double-check we still want to be connected
+          if (isCloudModeRef.current && wsRoomRef.current === roomToReconnect) {
+            connectWs(roomToReconnect);
+          }
+        }, 3000);
+      }
+    };
+
+    ws.onerror = () => {
+      // Error will be followed by onclose; no extra action needed
+    };
+  }, []);
+
+  const disconnectWs = useCallback(() => {
+    if (wsRef.current) {
+      intentionalCloseRef.current = true;
+      wsRef.current.close();
+      wsRef.current = null;
+      wsRoomRef.current = null;
+    }
+  }, []);
+
+  // Broadcast local change to collaborators
+  const broadcastUpdate = useCallback((draft: Draft) => {
+    const ws = wsRef.current;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({
+        type: 'update',
+        draftId: draft.id,
+        clientId: CLIENT_ID,
+        title: draft.title,
+        content: draft.content,
+        scrapbook: draft.scrapbook,
+        targetTemplate: draft.targetTemplate,
+        syllableTolerance: draft.syllableTolerance,
+        updatedAt: draft.updatedAt,
+      }));
+    }
+  }, []);
+
+  // Connect/disconnect WS when cloud mode or active draft changes
+  useEffect(() => {
+    if (isCloudMode && activeDraftId) {
+      connectWs(activeDraftId);
+    } else {
+      disconnectWs();
+    }
+
+    return () => {
+      // Don't disconnect on every re-render, only when truly unmounting
+    };
+  }, [isCloudMode, activeDraftId, connectWs, disconnectWs]);
+
+  // Cleanup WS on unmount
+  useEffect(() => {
+    return () => disconnectWs();
+  }, [disconnectWs]);
+
+  // ── Health check ───────────────────────────────────────────────────────────
   const checkHealth = useCallback(async (): Promise<boolean> => {
     setHealthStatus('checking');
     try {
@@ -94,11 +215,10 @@ export function useDrafts() {
     }
   }, []);
 
-  // Load drafts on mount or when mode changes
-  const loadDrafts = useCallback(async () => {
+  // ── Load drafts ────────────────────────────────────────────────────────────
+  const loadDrafts = useCallback(async (initialDraftId?: string | null) => {
     setIsSaving(true);
-    
-    // Attempt health check first
+
     let dbConnected = false;
     try {
       const res = await fetch('/api/health');
@@ -148,11 +268,10 @@ export function useDrafts() {
         if (loaded.length === 0) loaded = DEFAULT_DRAFTS;
       }
     } else {
-      // Local Database (IndexedDB)
+      // Local (IndexedDB)
       try {
         const local = await getLocalDrafts();
         if (local.length === 0) {
-          // Seed IndexedDB with the default draft
           for (const d of DEFAULT_DRAFTS) {
             await saveLocalDraft({
               id: d.id,
@@ -186,14 +305,16 @@ export function useDrafts() {
       }
     }
 
-    // Check for ?share=ID query parameter
-    const urlParams = new URLSearchParams(window.location.search);
-    const shareId = urlParams.get('share');
-    let sharedDraftToSelect: string | null = null;
+    setDrafts(loaded);
 
-    if (shareId) {
+    // Determine which draft to activate
+    // Priority: URL-provided ID > last active > first in list
+    if (initialDraftId && loaded.some(d => d.id === initialDraftId)) {
+      setActiveDraftId(initialDraftId);
+    } else if (initialDraftId && cloudActive) {
+      // Try fetching a draft from server that's not in our list (shared link)
       try {
-        const res = await fetch(`/api/drafts/${shareId}`);
+        const res = await fetch(`/api/drafts/${initialDraftId}`);
         if (res.ok) {
           const d = await res.json();
           const sharedDraft: Draft = {
@@ -207,46 +328,24 @@ export function useDrafts() {
             createdAt: Date.parse(d.createdAt) || Date.now(),
             updatedAt: Date.parse(d.updatedAt) || Date.now()
           };
-
-          // Save imported shared draft into IndexedDB
-          await saveLocalDraft({
-            id: sharedDraft.id,
-            title: sharedDraft.title,
-            content: sharedDraft.content,
-            scrapbook: sharedDraft.scrapbook,
-            targetTemplate: sharedDraft.targetTemplate,
-            audioCount: sharedDraft.audioCount,
-            syllableTolerance: sharedDraft.syllableTolerance,
-            createdAt: new Date(sharedDraft.createdAt).toISOString(),
-            updatedAt: new Date(sharedDraft.updatedAt).toISOString()
+          setDrafts(prev => {
+            const exists = prev.findIndex(x => x.id === sharedDraft.id);
+            if (exists > -1) return prev.map(x => x.id === sharedDraft.id ? sharedDraft : x);
+            return [sharedDraft, ...prev];
           });
-
-          // Insert or replace in loaded list
-          const existingIdx = loaded.findIndex(x => x.id === sharedDraft.id);
-          if (existingIdx > -1) {
-            loaded[existingIdx] = sharedDraft;
+          setActiveDraftId(sharedDraft.id);
+        } else {
+          // Draft not found — fall back to first
+          const savedActive = localStorage.getItem(ACTIVE_DRAFT_KEY);
+          if (savedActive && loaded.some(d => d.id === savedActive)) {
+            setActiveDraftId(savedActive);
           } else {
-            loaded = [sharedDraft, ...loaded];
+            setActiveDraftId(loaded[0]?.id || null);
           }
-          sharedDraftToSelect = sharedDraft.id;
         }
-      } catch (e) {
-        console.error('Failed to import shared draft on load:', e);
+      } catch {
+        setActiveDraftId(loaded[0]?.id || null);
       }
-
-      // Clean the URL query param
-      try {
-        const newUrl = window.location.pathname;
-        window.history.replaceState({}, document.title, newUrl);
-      } catch (e) {
-        console.error('Failed to clean URL:', e);
-      }
-    }
-
-    setDrafts(loaded);
-
-    if (sharedDraftToSelect) {
-      setActiveDraftId(sharedDraftToSelect);
     } else {
       const savedActive = localStorage.getItem(ACTIVE_DRAFT_KEY);
       if (savedActive && loaded.some(d => d.id === savedActive)) {
@@ -261,7 +360,7 @@ export function useDrafts() {
     setIsSaving(false);
   }, [useLocalMode]);
 
-  // Initial load
+  // Initial load (called from App with URL draft ID)
   useEffect(() => {
     loadDrafts();
   }, [loadDrafts]);
@@ -275,50 +374,52 @@ export function useDrafts() {
     }
   }, [activeDraftId]);
 
-  // Get currently active draft
   const activeDraft = useMemo(() => {
-    return drafts.find(d => d.id === activeDraftId) || drafts[0] || null;
+    return drafts.find(d => d.id === activeDraftId) || null;
   }, [drafts, activeDraftId]);
 
-  // Debounced auto-save for changes on the active draft
+  // ── Auto-save + WS broadcast on change ────────────────────────────────────
   useEffect(() => {
     if (!activeDraft) return;
 
     setIsSaving(true);
+    const draft = { ...activeDraft, updatedAt: Date.now() };
+
+    // Broadcast immediately over WS (real-time feel)
+    broadcastUpdate(draft);
+
     const timer = setTimeout(async () => {
-      const draftToSave = { ...activeDraft, updatedAt: Date.now() };
-      
-      if (isCloudMode) {
+      if (isCloudModeRef.current) {
         try {
-          const res = await fetch(`/api/drafts/${draftToSave.id}`, {
+          const res = await fetch(`/api/drafts/${draft.id}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              title: draftToSave.title,
-              content: draftToSave.content,
-              scrapbook: draftToSave.scrapbook,
-              targetTemplate: draftToSave.targetTemplate,
-              syllableTolerance: draftToSave.syllableTolerance ?? 1
+              title: draft.title,
+              content: draft.content,
+              scrapbook: draft.scrapbook,
+              targetTemplate: draft.targetTemplate,
+              syllableTolerance: draft.syllableTolerance ?? 1
             })
           });
           if (!res.ok) throw new Error('Cloud save failed');
         } catch (e) {
-          console.error('Failed to save to cloud server, writing locally', e);
+          console.error('Failed to save to cloud, writing locally', e);
           await saveLocalDraft({
-            ...draftToSave,
-            createdAt: new Date(draftToSave.createdAt).toISOString(),
-            updatedAt: new Date(draftToSave.updatedAt).toISOString()
+            ...draft,
+            createdAt: new Date(draft.createdAt).toISOString(),
+            updatedAt: new Date(draft.updatedAt).toISOString()
           });
         }
       } else {
         await saveLocalDraft({
-          ...draftToSave,
-          createdAt: new Date(draftToSave.createdAt).toISOString(),
-          updatedAt: new Date(draftToSave.updatedAt).toISOString()
+          ...draft,
+          createdAt: new Date(draft.createdAt).toISOString(),
+          updatedAt: new Date(draft.updatedAt).toISOString()
         });
       }
       setIsSaving(false);
-    }, 600); // Debounce editor strokes by 600ms
+    }, 600);
 
     return () => clearTimeout(timer);
   }, [
@@ -328,7 +429,7 @@ export function useDrafts() {
     activeDraft?.targetTemplate,
     activeDraft?.syllableTolerance,
     activeDraft?.audioCount,
-    isCloudMode
+    broadcastUpdate,
   ]);
 
   const selectDraft = useCallback((id: string) => {
@@ -344,7 +445,7 @@ export function useDrafts() {
       content: '',
       targetTemplate: '',
       scrapbook: '',
-    audioCount: 0,
+      audioCount: 0,
       syllableTolerance: 1,
       createdAt: Date.now(),
       updatedAt: Date.now()
@@ -353,7 +454,7 @@ export function useDrafts() {
     setDrafts(prev => [newDraft, ...prev]);
     setActiveDraftId(newDraft.id);
 
-    if (isCloudMode) {
+    if (isCloudModeRef.current) {
       try {
         const res = await fetch('/api/drafts', {
           method: 'POST',
@@ -378,7 +479,7 @@ export function useDrafts() {
     }
 
     return newDraft;
-  }, [isCloudMode]);
+  }, []);
 
   const updateActiveDraft = useCallback((updates: Partial<Omit<Draft, 'id' | 'createdAt'>>) => {
     if (!activeDraftId) return;
@@ -393,12 +494,12 @@ export function useDrafts() {
 
   const deleteDraft = useCallback(async (id: string) => {
     setDrafts(prev => prev.filter(d => d.id !== id));
-    
+
     if (activeDraftId === id) {
       setActiveDraftId(drafts.find(d => d.id !== id)?.id || null);
     }
 
-    if (isCloudMode) {
+    if (isCloudModeRef.current) {
       try {
         const res = await fetch(`/api/drafts/${id}`, { method: 'DELETE' });
         if (!res.ok) throw new Error('Cloud delete failed');
@@ -409,9 +510,8 @@ export function useDrafts() {
     } else {
       await deleteLocalDraft(id);
     }
-  }, [activeDraftId, drafts, isCloudMode]);
+  }, [activeDraftId, drafts]);
 
-  // Bulk sync function to push IndexedDB changes to MongoDB when connecting
   const syncLocalToCloud = useCallback(async () => {
     setIsSaving(true);
     try {
@@ -422,7 +522,6 @@ export function useDrafts() {
         return;
       }
 
-      // Convert LocalDraft interface to Draft representation
       const formattedDrafts = local.map(d => ({
         id: d.id,
         title: d.title,
@@ -439,7 +538,6 @@ export function useDrafts() {
       });
 
       if (res.ok) {
-        // Sync any recorded audio blobs
         for (const draft of local) {
           if (draft.audioCount > 0) {
             const localAudios = await getLocalAudios(draft.id);
@@ -459,8 +557,7 @@ export function useDrafts() {
 
         setUseLocalMode(false);
         setHealthStatus('connected');
-        
-        // Reload synced state from server
+
         const reloadRes = await fetch('/api/drafts');
         if (reloadRes.ok) {
           const data = await reloadRes.json();
@@ -509,7 +606,7 @@ export function useDrafts() {
         const validDrafts = parsed.filter(item => {
           return item.id && item.title !== undefined && item.content !== undefined;
         }) as Draft[];
-        
+
         if (validDrafts.length > 0) {
           setDrafts(prev => {
             const existingIds = new Set(prev.map(d => d.id));
@@ -519,11 +616,10 @@ export function useDrafts() {
           if (validDrafts[0]) {
             setActiveDraftId(validDrafts[0].id);
           }
-          
-          // Also save them locally/server
+
           for (const d of validDrafts) {
             const dToSave = { ...d, updatedAt: Date.now() };
-            if (isCloudMode) {
+            if (isCloudModeRef.current) {
               fetch(`/api/drafts`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -543,107 +639,10 @@ export function useDrafts() {
       console.error('Failed to import drafts', e);
     }
     return false;
-  }, [isCloudMode]);
+  }, []);
 
-  const syncActiveDraftWithRemote = useCallback(async () => {
-    if (!remoteDraft) return;
-
-    setDrafts(prev =>
-      prev.map(d =>
-        d.id === remoteDraft.id ? remoteDraft : d
-      )
-    );
-
-    await saveLocalDraft({
-      id: remoteDraft.id,
-      title: remoteDraft.title,
-      content: remoteDraft.content,
-      scrapbook: remoteDraft.scrapbook,
-      targetTemplate: remoteDraft.targetTemplate,
-      audioCount: remoteDraft.audioCount,
-      syllableTolerance: remoteDraft.syllableTolerance,
-      createdAt: new Date(remoteDraft.createdAt).toISOString(),
-      updatedAt: new Date(remoteDraft.updatedAt).toISOString()
-    });
-
-    setRemoteDraft(null);
-  }, [remoteDraft]);
-
-  // Polling for collaborator updates
-  useEffect(() => {
-    if (!isCloudMode || !activeDraftId) {
-      setRemoteDraft(null);
-      return;
-    }
-
-    const interval = setInterval(async () => {
-      try {
-        const res = await fetch(`/api/drafts/${activeDraftId}`);
-        if (!res.ok) return;
-        const d = await res.json();
-        
-        // Find current draft state from ref
-        const localDraft = draftsRef.current.find(x => x.id === activeDraftId);
-        if (!localDraft) return;
-
-        const serverDraft: Draft = {
-          id: d.id,
-          title: d.title,
-          content: d.content,
-          targetTemplate: d.targetTemplate,
-          scrapbook: d.scrapbook,
-          audioCount: d.audioCount || 0,
-          syllableTolerance: d.syllableTolerance ?? 1,
-          createdAt: Date.parse(d.createdAt) || Date.now(),
-          updatedAt: Date.parse(d.updatedAt) || Date.now()
-        };
-
-        // Check if server version is different
-        const isDifferent =
-          serverDraft.title !== localDraft.title ||
-          serverDraft.content !== localDraft.content ||
-          serverDraft.scrapbook !== localDraft.scrapbook ||
-          serverDraft.targetTemplate !== localDraft.targetTemplate ||
-          serverDraft.syllableTolerance !== localDraft.syllableTolerance;
-
-        if (isDifferent && serverDraft.updatedAt > localDraft.updatedAt + 1000) {
-          if (isEditorFocusedRef.current) {
-            setRemoteDraft(serverDraft);
-          } else {
-            // Auto sync
-            setDrafts(prev =>
-              prev.map(x => x.id === serverDraft.id ? serverDraft : x)
-            );
-            await saveLocalDraft({
-              id: serverDraft.id,
-              title: serverDraft.title,
-              content: serverDraft.content,
-              scrapbook: serverDraft.scrapbook,
-              targetTemplate: serverDraft.targetTemplate,
-              audioCount: serverDraft.audioCount,
-              syllableTolerance: serverDraft.syllableTolerance,
-              createdAt: new Date(serverDraft.createdAt).toISOString(),
-              updatedAt: new Date(serverDraft.updatedAt).toISOString()
-            });
-            setRemoteDraft(null);
-          }
-        } else if (!isDifferent) {
-          setRemoteDraft(null);
-        }
-      } catch (e) {
-        console.error('Failed to poll draft status:', e);
-      }
-    }, 4000);
-
-    return () => clearInterval(interval);
-  }, [isCloudMode, activeDraftId]);
-
-  // Auto-sync when editor is blurred and we have a pending remote update
-  useEffect(() => {
-    if (!isEditorFocused && remoteDraft) {
-      syncActiveDraftWithRemote();
-    }
-  }, [isEditorFocused, remoteDraft, syncActiveDraftWithRemote]);
+  // Legacy: kept for backward compat (no-op now since WS handles sync)
+  const syncActiveDraftWithRemote = useCallback(async () => {}, []);
 
   return {
     drafts,
@@ -653,8 +652,8 @@ export function useDrafts() {
     healthStatus,
     useLocalMode,
     isCloudMode,
-    remoteDraft,
-    isEditorFocused,
+    remoteDraft: null,         // No longer used — WS handles live sync
+    isEditorFocused: false,
     setIsEditorFocused,
     syncActiveDraftWithRemote,
     setUseLocalMode,
@@ -666,6 +665,6 @@ export function useDrafts() {
     syncLocalToCloud,
     exportAllDrafts,
     importDrafts,
-    loadDrafts
+    loadDrafts,
   };
 }

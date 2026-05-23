@@ -88,7 +88,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({
       {/* Panel Header */}
       <div className="h-12 px-4 border-b border-paper-darker flex items-center flex-shrink-0 bg-paper">
         <span className="text-[11px] font-sans font-semibold uppercase tracking-widest text-ink-muted flex items-center gap-2">
-          <Sparkles className="w-3.5 h-3.5 text-terracotta" /> Pop Vibe &amp; Rhymes
+          <Sparkles className="w-3.5 h-3.5 text-terracotta" /> Rhymes
         </span>
       </div>
 

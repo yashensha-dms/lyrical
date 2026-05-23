@@ -15,7 +15,13 @@ interface HighlightingTextareaProps {
   onSelect?: () => void;
   onMouseUp?: () => void;
   onScroll?: (e: React.UIEvent<HTMLTextAreaElement>) => void;
-  simplicityAlerts?: { word: string; index: number }[];
+}
+
+/**
+ * Returns true if a line is a "backup idea" line (starts with > or > followed by space).
+ */
+function isBackupLine(line: string): boolean {
+  return /^>\s?/.test(line);
 }
 
 export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, HighlightingTextareaProps>(({
@@ -33,7 +39,6 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
   onSelect,
   onMouseUp,
   onScroll,
-  simplicityAlerts = [],
 }, ref) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -41,7 +46,6 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
 
   React.useImperativeHandle(ref, () => textareaRef.current!);
 
-  // Synchronize scroll position of overlay with textarea
   const syncScroll = () => {
     if (textareaRef.current && overlayRef.current) {
       overlayRef.current.scrollTop = textareaRef.current.scrollTop;
@@ -51,81 +55,82 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
 
   const handleScroll = (e: React.UIEvent<HTMLTextAreaElement>) => {
     syncScroll();
-    if (onScroll) {
-      onScroll(e);
-    }
+    if (onScroll) onScroll(e);
   };
 
-  // Focus textarea when container is clicked
   const focusTextarea = () => {
-    if (textareaRef.current) {
-      textareaRef.current.focus();
-    }
+    if (textareaRef.current) textareaRef.current.focus();
   };
 
-  // Sync scroll height on render
-  useEffect(() => {
-    syncScroll();
-  }, [value]);
+  useEffect(() => { syncScroll(); }, [value]);
 
-  const renderHighlightedText = () => {
+  /**
+   * Renders the overlay content.
+   * - In subconscious mode: invisible blur mask
+   * - Otherwise: lines starting with `>` get backup-idea styling (visible tinted text
+   *   so the overlay colors the text while the textarea text is transparent/invisible)
+   */
+  const renderOverlay = () => {
     if (subconsciousActive) {
+      // In blind mode the overlay handles the blur glow
       return value + (value.endsWith('\n') ? ' ' : '');
     }
-    if (!simplicityAlerts || simplicityAlerts.length === 0) {
-      return value + (value.endsWith('\n') ? ' ' : '');
-    }
 
-    const sortedAlerts = [...simplicityAlerts].sort((a, b) => a.index - b.index);
-    const elements: React.ReactNode[] = [];
-    let lastIdx = 0;
+    // Split into lines preserving newlines
+    const lines = value.split('\n');
+    const nodes: React.ReactNode[] = [];
 
-    for (let i = 0; i < sortedAlerts.length; i++) {
-      const alert = sortedAlerts[i];
-      const start = alert.index;
-      const end = start + alert.word.length;
-
-      if (start < lastIdx || start >= value.length) continue;
-
-      if (start > lastIdx) {
-        elements.push(value.substring(lastIdx, start));
+    lines.forEach((line, idx) => {
+      const backup = isBackupLine(line);
+      if (backup) {
+        // Render backup lines with muted italic style + left accent
+        nodes.push(
+          <span
+            key={idx}
+            style={{
+              display: 'block',
+              borderLeft: '2px solid rgba(192, 105, 78, 0.35)',
+              paddingLeft: '8px',
+              marginLeft: '-10px',
+              color: 'rgba(122, 115, 106, 0.55)',    // ink-muted, semi-transparent
+              fontStyle: 'italic',
+            }}
+          >
+            {line || ' '}
+          </span>
+        );
+      } else {
+        // Normal lines: transparent (textarea shows through)
+        nodes.push(
+          <span key={idx} style={{ display: 'block', color: 'transparent' }}>
+            {line || ' '}
+          </span>
+        );
       }
 
-      elements.push(
-        <span
-          key={`highlight-${start}-${i}`}
-          className="bg-orange-500/10 border-b border-orange-500 rounded-sm"
-        >
-          {value.substring(start, end)}
-        </span>
-      );
+      // Re-add the newline except after the last line
+      if (idx < lines.length - 1) {
+        nodes.push('\n');
+      }
+    });
 
-      lastIdx = end;
-    }
+    // Trailing space to keep scrollHeight correct when last char is newline
+    if (value.endsWith('\n')) nodes.push(' ');
 
-    if (lastIdx < value.length) {
-      elements.push(value.substring(lastIdx));
-    }
-
-    return (
-      <>
-        {elements}
-        {value.endsWith('\n') ? ' ' : ''}
-      </>
-    );
+    return <>{nodes}</>;
   };
 
   return (
-    <div 
-      ref={containerRef} 
+    <div
+      ref={containerRef}
       className="relative w-full h-full cursor-text overflow-hidden"
       onClick={focusTextarea}
     >
-      {/* 1. Synced Highlight Overlay (behind the textarea to handle blind mask mode and highlights) */}
+      {/* Highlight overlay — sits behind the textarea */}
       <div
         ref={overlayRef}
         className={`absolute inset-0 w-full h-full select-none pointer-events-none whitespace-pre-wrap break-words overflow-x-hidden overflow-y-auto block border-0 leading-[32px] ${isMobile ? 'py-4 px-4 text-[15px]' : 'py-6 px-8 text-[17px]'} font-serif ${
-          subconsciousActive ? 'subconscious-blind-mode text-transparent' : 'text-transparent'
+          subconsciousActive ? 'subconscious-blind-mode' : ''
         }`}
         style={{
           lineHeight: '32px',
@@ -133,11 +138,12 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
           maxWidth: '100%',
           ...style,
         }}
+        aria-hidden
       >
-        {renderHighlightedText()}
+        {renderOverlay()}
       </div>
 
-      {/* 2. Actual Interactive Textarea */}
+      {/* Actual textarea — sits on top, with transparent color so overlay shows through for backup lines */}
       <textarea
         ref={textareaRef}
         value={value}
@@ -150,7 +156,7 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
         onKeyUp={onKeyUp}
         onSelect={onSelect}
         placeholder={placeholder}
-        className={`w-full h-full bg-transparent text-ink placeholder-ink-light/50 font-serif leading-[32px] resize-none focus:outline-none whitespace-pre-wrap break-words overflow-x-hidden overflow-y-auto block border-0 relative z-10 ${
+        className={`w-full h-full bg-transparent font-serif leading-[32px] resize-none focus:outline-none whitespace-pre-wrap break-words overflow-x-hidden overflow-y-auto block border-0 relative z-10 ${
           isMobile ? 'py-4 px-4 text-[15px]' : 'py-6 px-8 text-[17px]'
         } ${
           subconsciousActive ? 'subconscious-blind-mode caret-transparent' : 'caret-terracotta'
@@ -160,8 +166,10 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
           fontFeatureSettings: '"kern" 1, "liga" 1',
           maxWidth: '100%',
           background: 'transparent',
-          color: subconsciousActive ? 'transparent' : 'currentColor',
-          WebkitTextFillColor: subconsciousActive ? 'transparent' : 'currentColor',
+          // Use mixed coloring per line via overlay; textarea text is visible for normal lines,
+          // transparent for backup lines (overlay provides the muted italic look)
+          color: subconsciousActive ? 'transparent' : undefined,
+          WebkitTextFillColor: subconsciousActive ? 'transparent' : undefined,
           ...style,
         }}
       />

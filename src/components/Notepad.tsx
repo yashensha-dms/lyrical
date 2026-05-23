@@ -13,9 +13,9 @@ interface NotepadProps {
   updateActiveDraft: (updates: Partial<Omit<Draft, 'id' | 'createdAt'>>) => void;
   setSelectedWord: (word: string) => void;
   onRegisterReplace: (callback: (word: string) => void) => void;
-  remoteDraft: Draft | null;
+  remoteDraft?: Draft | null;
   setIsEditorFocused: (focused: boolean) => void;
-  syncActiveDraftWithRemote: () => void;
+  syncActiveDraftWithRemote?: () => void;
   isCloudMode: boolean;
   onSubconsciousActiveChange?: (active: boolean) => void;
   isMobile?: boolean;
@@ -31,13 +31,12 @@ export const Notepad: React.FC<NotepadProps> = ({
   updateActiveDraft,
   setSelectedWord,
   onRegisterReplace,
-  remoteDraft,
+  remoteDraft: _remoteDraft,
   setIsEditorFocused,
-  syncActiveDraftWithRemote,
+  syncActiveDraftWithRemote: _syncActiveDraftWithRemote,
   isCloudMode,
   onSubconsciousActiveChange,
   isMobile = false,
-  simplicityAlerts = [],
 }) => {
   const gutterRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -420,24 +419,7 @@ export const Notepad: React.FC<NotepadProps> = ({
         </div>
       )}
 
-      {/* Co-writer Sync Banner */}
-      {remoteDraft && (
-        <div className="bg-terracotta-light text-ink border-b border-terracotta/20 px-8 py-2.5 flex items-center justify-between text-xs font-medium flex-shrink-0">
-          <div className="flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 text-terracotta" />
-            <span>New changes from co-writer.</span>
-          </div>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              syncActiveDraftWithRemote();
-            }}
-            className="bg-terracotta hover:bg-terracotta-hover text-white px-2.5 py-1 rounded text-[10px] uppercase font-bold tracking-wider transition cursor-pointer"
-          >
-            Sync Now
-          </button>
-        </div>
-      )}
+
 
       {/* Editor Main Section */}
       <div className="flex-1 flex min-h-0 relative">
@@ -451,19 +433,20 @@ export const Notepad: React.FC<NotepadProps> = ({
               let lyricLineCount = 0;
               return lines.map((lineText, idx) => {
                 const cleanLine = lineText.trim();
-                const syllableCount = cleanLine ? countLineSyllables(cleanLine) : 0;
+                const isBackup = /^>\s?/.test(cleanLine);
+                const syllableCount = cleanLine && !isBackup ? countLineSyllables(cleanLine) : 0;
                 const isHeader = cleanLine.startsWith('[');
                 const isEmpty = !cleanLine;
-                
-                // Check target matches
+
+                // Check target matches (skip headers, empties, backup lines)
                 let isMismatch = false;
                 let isNearMatch = false;
                 let targetCount = 0;
 
-                if (targets.length > 0 && !isHeader && !isEmpty) {
+                if (targets.length > 0 && !isHeader && !isEmpty && !isBackup) {
                   targetCount = targets[lyricLineCount % targets.length];
                   const difference = Math.abs(syllableCount - targetCount);
-                  
+
                   if (difference > 0) {
                     if (difference <= syllableTolerance) {
                       isNearMatch = true;
@@ -482,11 +465,12 @@ export const Notepad: React.FC<NotepadProps> = ({
                   >
                     {/* Line Number */}
                     <span className="text-[9px] text-ink-light/50">{idx + 1}</span>
-                    
+
                     {/* Syllable Count Badge */}
-                    {cleanLine ? (
+                    {isBackup ? (
+                      <span className="text-[8px] font-mono font-semibold text-terracotta/40 px-1 italic">alt</span>
+                    ) : cleanLine ? (
                       isHeader ? (
-                        // Section header (e.g. [Chorus], [Verse]) - don't show syllable count
                         <span className="text-[9px] uppercase font-semibold text-terracotta/40 px-1">sec</span>
                       ) : (
                         <span
@@ -537,7 +521,6 @@ export const Notepad: React.FC<NotepadProps> = ({
             placeholder={subconsciousActive ? "Keep typing, don't stop, don't look back..." : "Write your lyrics here..."}
             subconsciousActive={subconsciousActive}
             isMobile={isMobile}
-            simplicityAlerts={simplicityAlerts}
           />
         </div>
       </div>

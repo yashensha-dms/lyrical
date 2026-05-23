@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { PanelRightClose, PanelRight, AlertCircle, RefreshCw } from 'lucide-react';
 import { ActivityBar } from './components/ActivityBar';
 import { Sidebar } from './components/Sidebar';
@@ -6,8 +6,10 @@ import { Notepad } from './components/Notepad';
 import { RightPanel } from './components/RightPanel';
 import { StatusBar } from './components/StatusBar';
 import { MobileLayout } from './components/MobileLayout';
+import { LandingPage } from './components/LandingPage';
 import { useDrafts } from './hooks/useDrafts';
 import { useIsMobile } from './hooks/useIsMobile';
+import { useRoute } from './hooks/useRoute';
 
 function App() {
   const {
@@ -17,7 +19,6 @@ function App() {
     healthStatus,
     useLocalMode,
     isCloudMode,
-    remoteDraft,
     setIsEditorFocused,
     syncActiveDraftWithRemote,
     setUseLocalMode,
@@ -28,7 +29,11 @@ function App() {
     syncLocalToCloud,
     exportAllDrafts,
     importDrafts,
+    loadDrafts,
   } = useDrafts();
+
+  const { draftId: urlDraftId, navigate } = useRoute();
+  const isMobile = useIsMobile();
 
   // Layout panel states
   const [activePanel, setActivePanel] = useState<'explorer' | 'scrapbook' | 'audio' | 'catcher' | 'settings'>('explorer');
@@ -38,17 +43,66 @@ function App() {
   // Selected word for rhyme lookup
   const [selectedWord, setSelectedWord] = useState('');
 
-  // Callback function to replace the selected word in the active draft
+  // Word replacement callback
   const [replaceWordFn, setReplaceWordFn] = useState<((word: string) => void) | null>(null);
 
-  // Subconscious writing mode focus state
+  // Subconscious writing mode
   const [subconsciousActive, setSubconsciousActive] = useState(false);
 
-  // Responsive layout detection
-  const isMobile = useIsMobile();
+  // ── URL ↔ Draft sync ──────────────────────────────────────────────────────
+  // Track whether we've performed the initial URL-to-draft selection
+  const initialUrlHandledRef = useRef(false);
 
-  // ── Mobile Layout ──
+  // On first load: if URL has /draft/:id, select that draft once drafts are ready.
+  // This does NOT navigate (URL is already correct), just syncs state.
+  useEffect(() => {
+    if (initialUrlHandledRef.current) return;
+    if (!urlDraftId) {
+      initialUrlHandledRef.current = true;
+      return;
+    }
+    if (drafts.length === 0) return; // wait for drafts to load
+
+    initialUrlHandledRef.current = true;
+    const found = drafts.find(d => d.id === urlDraftId);
+    if (found) {
+      // Just select — don't navigate (URL is already /draft/:id)
+      selectDraft(urlDraftId);
+    } else {
+      // Draft not in local list — try fetching from server
+      loadDrafts(urlDraftId);
+    }
+  }, [urlDraftId, drafts.length]);
+
+  // Handle select draft: update state AND update URL
+  const handleSelectDraft = (id: string) => {
+    selectDraft(id);
+    navigate(`/draft/${id}`);
+  };
+
+  // Handle create draft: create AND navigate to the new URL
+  const handleCreateDraft = async (title?: string) => {
+    const newDraft = await createDraft(title);
+    navigate(`/draft/${newDraft.id}`);
+    return newDraft;
+  };
+
+  // Show landing if no active draft
+  const showLanding = !activeDraft;
+
+  // ── Mobile Layout ──────────────────────────────────────────────────────────
   if (isMobile) {
+    if (showLanding) {
+      return (
+        <LandingPage
+          drafts={drafts}
+          isCloudMode={isCloudMode}
+          healthStatus={healthStatus}
+          onSelectDraft={handleSelectDraft}
+          onCreateDraft={() => handleCreateDraft()}
+        />
+      );
+    }
     return (
       <MobileLayout
         drafts={drafts}
@@ -56,9 +110,9 @@ function App() {
         healthStatus={healthStatus}
         useLocalMode={useLocalMode}
         isCloudMode={isCloudMode}
-        remoteDraft={remoteDraft}
-        selectDraft={selectDraft}
-        createDraft={createDraft}
+        remoteDraft={null}
+        selectDraft={handleSelectDraft}
+        createDraft={handleCreateDraft}
         updateActiveDraft={updateActiveDraft}
         deleteDraft={deleteDraft}
         exportAllDrafts={exportAllDrafts}
@@ -73,36 +127,57 @@ function App() {
     );
   }
 
-  // ── Desktop Layout ──
+  // ── Landing Page (desktop, no draft) ──────────────────────────────────────
+  if (showLanding) {
+    return (
+      <LandingPage
+        drafts={drafts}
+        isCloudMode={isCloudMode}
+        healthStatus={healthStatus}
+        onSelectDraft={handleSelectDraft}
+        onCreateDraft={() => handleCreateDraft()}
+      />
+    );
+  }
+
+  // ── Desktop Layout ─────────────────────────────────────────────────────────
   return (
     <div className="w-screen h-screen flex flex-col bg-paper text-ink font-sans select-none overflow-hidden">
-      
+
       {/* Top Application Header */}
-      <header className={`h-10 w-full bg-paper-dark border-b border-paper-darker flex items-center justify-between px-4 select-none flex-shrink-0 transition-all duration-500 ${
+      <header className={`h-10 w-full bg-paper border-b border-paper-darker flex items-center justify-between px-4 select-none flex-shrink-0 transition-all duration-500 ${
         subconsciousActive ? 'opacity-10 pointer-events-none' : ''
       }`}>
-        {/* Left Side: App Logo */}
+        {/* Left: Logo + back to home */}
         <div className="flex items-center gap-2">
-          <span className="font-extrabold text-terracotta tracking-wider text-base">Lyrical</span>
-          <span className="text-[10px] bg-paper-darker border border-paper-darker text-ink-muted px-1.5 py-0.5 rounded font-mono font-medium">Core Workspace</span>
-          
+          <button
+            onClick={() => navigate('/')}
+            className="font-extrabold text-terracotta tracking-wider text-base hover:text-terracotta-hover transition cursor-pointer"
+            title="All Songs"
+          >
+            Lyrical
+          </button>
+          <span className="text-[10px] bg-paper-dark border border-paper-darker text-ink-muted px-1.5 py-0.5 rounded font-mono font-medium">
+            {activeDraft.title || 'Untitled Song'}
+          </span>
+
           {isCloudMode ? (
-            <span className="flex items-center gap-1 text-[9px] bg-paper border border-paper-darker text-[#10B981] px-1.5 py-0.5 rounded font-mono font-semibold">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#10B981]"></span> Cloud
+            <span className="flex items-center gap-1 text-[9px] bg-[#EDF7F2] border border-[#BDE8D4] text-[#2D7A56] px-1.5 py-0.5 rounded font-mono font-semibold">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#2D7A56] animate-pulse"></span> Live
             </span>
           ) : (
-            <span className="flex items-center gap-1 text-[9px] bg-[#FEF3C7] border border-[#FDE68A] text-[#D97706] px-1.5 py-0.5 rounded font-mono font-semibold">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#D97706] animate-pulse"></span> Local
+            <span className="flex items-center gap-1 text-[9px] bg-amber-light border border-[#F5DDA8] text-amber-DEFAULT px-1.5 py-0.5 rounded font-mono font-semibold">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-DEFAULT animate-pulse"></span> Local
             </span>
           )}
         </div>
 
-        {/* Right Side: Right Panel Toggle */}
+        {/* Right: Right Panel Toggle */}
         <div className="flex items-center gap-1.5">
           <button
             onClick={() => setIsRightPanelOpen(!isRightPanelOpen)}
-            className={`p-1.5 rounded transition cursor-pointer hover:bg-paper-darker text-ink-muted hover:text-ink ${
-              isRightPanelOpen ? 'bg-paper-darker/60 text-terracotta' : ''
+            className={`p-1.5 rounded transition cursor-pointer hover:bg-paper-dark text-ink-muted hover:text-ink ${
+              isRightPanelOpen ? 'bg-paper-dark text-terracotta' : ''
             }`}
             title="Toggle Right Panel"
             aria-label="Toggle Right Panel"
@@ -111,17 +186,17 @@ function App() {
           </button>
         </div>
       </header>
-      
+
       {/* Offline Warning Banner */}
       {healthStatus === 'disconnected' && !useLocalMode && (
-        <div className="bg-[#FEF3C7] text-ink border-b border-[#FDE68A] px-4 py-2 flex items-center justify-between text-xs font-medium flex-shrink-0 select-none">
+        <div className="bg-amber-light text-ink border-b border-[#F5DDA8] px-4 py-2 flex items-center justify-between text-xs font-medium flex-shrink-0 select-none">
           <div className="flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 text-[#D97706]" />
+            <AlertCircle className="w-4 h-4 text-amber-DEFAULT" />
             <span>Database connection is offline. Cloud features are unavailable.</span>
           </div>
           <button
             onClick={() => setUseLocalMode(true)}
-            className="bg-[#D97706] hover:bg-[#B45309] text-white px-2.5 py-1 rounded text-[10px] uppercase font-bold tracking-wider transition cursor-pointer"
+            className="bg-amber-DEFAULT hover:bg-amber-DEFAULT/80 text-white px-2.5 py-1 rounded text-[10px] uppercase font-bold tracking-wider transition cursor-pointer"
           >
             Switch to Local Mode
           </button>
@@ -146,8 +221,8 @@ function App() {
 
       {/* Main Workspace Area */}
       <main className="flex-1 flex min-h-0 w-full relative">
-        
-        {/* 1. Activity Bar (Narrow Left) */}
+
+        {/* 1. Activity Bar */}
         <div className={`transition-all duration-500 h-full flex flex-shrink-0 ${
           subconsciousActive ? 'opacity-10 pointer-events-none' : ''
         }`}>
@@ -159,7 +234,7 @@ function App() {
           />
         </div>
 
-        {/* 2. Left Collapsible Sidebar */}
+        {/* 2. Left Sidebar */}
         {isSidebarOpen && (
           <div className={`transition-all duration-500 h-full flex flex-shrink-0 ${
             subconsciousActive ? 'opacity-10 pointer-events-none' : ''
@@ -168,8 +243,8 @@ function App() {
               activePanel={activePanel}
               drafts={drafts}
               activeDraft={activeDraft}
-              selectDraft={selectDraft}
-              createDraft={createDraft}
+              selectDraft={handleSelectDraft}
+              createDraft={handleCreateDraft}
               updateActiveDraft={updateActiveDraft}
               deleteDraft={deleteDraft}
               exportAllDrafts={exportAllDrafts}
@@ -180,37 +255,25 @@ function App() {
           </div>
         )}
 
-        {/* 3. Central Notepad Writing Canvas */}
-        {activeDraft ? (
-          <Notepad
-            draftId={activeDraft.id}
-            title={activeDraft.title}
-            content={activeDraft.content}
-            targetTemplate={activeDraft.targetTemplate}
-            syllableTolerance={activeDraft.syllableTolerance ?? 1}
-            updateActiveDraft={updateActiveDraft}
-            setSelectedWord={setSelectedWord}
-            onRegisterReplace={setReplaceWordFn}
-            remoteDraft={remoteDraft}
-            setIsEditorFocused={setIsEditorFocused}
-            syncActiveDraftWithRemote={syncActiveDraftWithRemote}
-            isCloudMode={isCloudMode}
-            onSubconsciousActiveChange={setSubconsciousActive}
-          />
-        ) : (
-          <div className="flex-1 h-full bg-paper flex flex-col items-center justify-center text-ink-light select-none">
-            <p className="text-sm font-serif italic mb-2">Write your masterpiece.</p>
-            <button
-              onClick={() => createDraft()}
-              className="bg-terracotta hover:bg-terracotta-hover text-white text-xs px-3 py-1.5 rounded shadow-paper-sm cursor-pointer transition font-medium"
-            >
-              Create New Song
-            </button>
-          </div>
-        )}
+        {/* 3. Notepad */}
+        <Notepad
+          draftId={activeDraft.id}
+          title={activeDraft.title}
+          content={activeDraft.content}
+          targetTemplate={activeDraft.targetTemplate}
+          syllableTolerance={activeDraft.syllableTolerance ?? 1}
+          updateActiveDraft={updateActiveDraft}
+          setSelectedWord={setSelectedWord}
+          onRegisterReplace={setReplaceWordFn}
+          remoteDraft={null}
+          setIsEditorFocused={setIsEditorFocused}
+          syncActiveDraftWithRemote={syncActiveDraftWithRemote}
+          isCloudMode={isCloudMode}
+          onSubconsciousActiveChange={setSubconsciousActive}
+        />
 
-        {/* 4. Right Collapsible Utility Panel */}
-        {isRightPanelOpen && activeDraft && (
+        {/* 4. Right Panel */}
+        {isRightPanelOpen && (
           <div className={`transition-all duration-500 h-full flex flex-shrink-0 ${
             subconsciousActive ? 'opacity-10 pointer-events-none' : ''
           }`}>
@@ -222,7 +285,7 @@ function App() {
         )}
       </main>
 
-      {/* 5. Bottom Status Bar */}
+      {/* 5. Status Bar */}
       <div className={`transition-all duration-500 w-full flex-shrink-0 ${
         subconsciousActive ? 'opacity-10 pointer-events-none' : ''
       }`}>

@@ -17,7 +17,7 @@ interface MobileLayoutProps {
   remoteDraft: Draft | null;
   // Actions
   selectDraft: (id: string) => void;
-  createDraft: (title?: string) => void;
+  createDraft: (title?: string) => Promise<Draft>;
   updateActiveDraft: (updates: Partial<Omit<Draft, 'id' | 'createdAt'>>) => void;
   deleteDraft: (id: string) => void;
   exportAllDrafts: () => void;
