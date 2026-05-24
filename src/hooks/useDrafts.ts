@@ -40,6 +40,7 @@ export function useDrafts(session: any) {
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [activeDraftId, setActiveDraftId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [healthStatus, setHealthStatus] = useState<'checking' | 'connected' | 'disconnected'>('checking');
   const [useLocalMode, setUseLocalModeState] = useState<boolean>(() => {
     return localStorage.getItem('lyrical_use_local_mode') === 'true';
@@ -246,6 +247,7 @@ export function useDrafts(session: any) {
 
   // ── Load drafts / projects ──────────────────────────────────────────────────
   const loadDrafts = useCallback(async (initialDraftId?: string | null) => {
+    setIsLoading(true);
     setIsSaving(true);
 
     let urlDraftIdToUse = initialDraftId;
@@ -387,6 +389,7 @@ export function useDrafts(session: any) {
     }
 
     setIsSaving(false);
+    setIsLoading(false);
   }, [useLocalMode, session, getAuthHeaders]);
 
   // Initial load
@@ -396,6 +399,7 @@ export function useDrafts(session: any) {
     } else {
       setDrafts([]);
       setActiveDraftId(null);
+      setIsLoading(false);
     }
   }, [session, loadDrafts]);
 
@@ -560,6 +564,7 @@ export function useDrafts(session: any) {
     activeDraft,
     activeDraftId,
     isSaving,
+    isLoading,
     healthStatus,
     useLocalMode,
     isCloudMode,
