@@ -15,6 +15,9 @@ interface SidebarProps {
   setIsSidebarOpen: (open: boolean) => void;
   isCloudMode: boolean;
   isMobile?: boolean;
+  penName?: string;
+  setPenName?: (name: string) => void;
+  googleDefaultName?: string;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -29,6 +32,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   importDrafts,
   setIsSidebarOpen,
   isMobile = false,
+  penName,
+  setPenName,
+  googleDefaultName,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -252,6 +258,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {activePanel === 'settings' && (
         <div className="flex-1 p-4 flex flex-col justify-between select-none bg-transparent">
           <div className="space-y-4">
+            {penName !== undefined && setPenName && (
+              <div className="border-b border-paper-darker pb-4">
+                <h4 className="text-xs font-semibold text-ink uppercase tracking-wider mb-2">Pen Name</h4>
+                <p className="text-[11px] text-ink-muted leading-relaxed mb-2">
+                  Configure your display name for real-time collaboration. Defaults to your Google account name.
+                </p>
+                <input
+                  type="text"
+                  placeholder={googleDefaultName || 'Enter your pen name...'}
+                  value={penName}
+                  onChange={(e) => setPenName(e.target.value)}
+                  spellCheck="false"
+                  className="w-full bg-paper border border-paper-darker rounded px-3 py-1.5 text-xs text-ink placeholder-ink-light focus:outline-none focus:border-terracotta transition select-text"
+                />
+              </div>
+            )}
+
             <div>
               <h4 className="text-xs font-semibold text-ink uppercase tracking-wider mb-2">Backups</h4>
               <p className="text-[11px] text-ink-muted leading-relaxed mb-3">

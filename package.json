@@ -4,7 +4,7 @@
   "version": "2.5.0",
   "type": "module",
   "scripts": {
-    "dev": "concurrently \"vite\" \"tsx server/index.ts\" \"python server/nlp_server.py\"",
+    "dev": "concurrently --kill-others \"vite\" \"tsx server/index.ts\" \"python server/nlp_server.py\"",
     "server": "tsx server/index.ts",
     "build": "tsc -b && vite build",
     "lint": "eslint .",

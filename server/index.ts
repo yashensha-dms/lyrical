@@ -139,7 +139,27 @@ httpServer.on('upgrade', async (request, socket, head) => {
         .eq('id', projectId)
         .single();
 
-      if (dbError || !project || project.user_id !== user.id) {
+      if (dbError || !project) {
+        socket.write('HTTP/1.1 404 Not Found\r\n\r\n');
+        socket.destroy();
+        return;
+      }
+
+      // Check if user is the owner OR a collaborator
+      let hasAccess = project.user_id === user.id;
+      if (!hasAccess) {
+        const { data: collab, error: collabError } = await supabase
+          .from('project_collaborators')
+          .select('project_id')
+          .eq('project_id', projectId)
+          .eq('user_id', user.id)
+          .maybeSingle();
+        if (!collabError && collab) {
+          hasAccess = true;
+        }
+      }
+
+      if (!hasAccess) {
         socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
         socket.destroy();
         return;
@@ -203,18 +223,42 @@ app.get('/api/health', async (req, res) => {
   }
 });
 
-// 1. Get all projects belonging to logged in user
+// 1. Get all projects belonging to logged in user (owned or collaborating)
 app.get('/api/projects', authenticateUser, async (req, res) => {
   try {
     const user = (req as any).user;
-    const { data: projects, error } = await supabase
-      .from('projects')
-      .select('id, title, created_at')
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: false });
 
-    if (error) throw error;
-    res.json(projects);
+    // Fetch projects owned by user
+    const { data: ownedProjects, error: ownedError } = await supabase
+      .from('projects')
+      .select('id, title, created_at, user_id')
+      .eq('user_id', user.id);
+
+    if (ownedError) throw ownedError;
+
+    // Fetch projects where user is a collaborator
+    const { data: collabProjects, error: collabError } = await supabase
+      .from('project_collaborators')
+      .select('projects(id, title, created_at, user_id)')
+      .eq('user_id', user.id);
+
+    if (collabError) throw collabError;
+
+    const colabList = collabProjects
+      ?.map((c: any) => c.projects)
+      .filter(Boolean) || [];
+
+    const combined = [...(ownedProjects || []), ...colabList];
+
+    // Deduplicate projects by ID
+    const uniqueProjects = combined.filter(
+      (v, i, a) => a.findIndex((t) => t.id === v.id) === i
+    );
+
+    // Sort by created_at descending
+    uniqueProjects.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+    res.json(uniqueProjects);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
@@ -235,7 +279,7 @@ app.post('/api/projects', authenticateUser, async (req, res) => {
         title,
         user_id: user.id
       })
-      .select('id, title, created_at')
+      .select('id, title, created_at, user_id')
       .single();
 
     if (error) throw error;
@@ -245,19 +289,89 @@ app.post('/api/projects', authenticateUser, async (req, res) => {
   }
 });
 
-// 3. Delete a project
-app.delete('/api/projects/:id', authenticateUser, async (req, res) => {
-  const { id } = req.params;
+// 2b. Join an existing project using link/id
+app.post('/api/projects/:id/join', authenticateUser, async (req, res) => {
+  const { id: projectId } = req.params;
+  const user = (req as any).user;
+
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(projectId);
+  if (!isUuid) {
+    return res.status(400).json({ error: 'Invalid project ID format' });
+  }
 
   try {
-    const user = (req as any).user;
-    const { error } = await supabase
+    const { data: project, error: getError } = await supabase
       .from('projects')
-      .delete()
-      .eq('id', id)
-      .eq('user_id', user.id);
+      .select('id, title, created_at, user_id')
+      .eq('id', projectId)
+      .single();
 
-    if (error) throw error;
+    if (getError || !project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    // Owner does not need to join, return metadata directly
+    if (project.user_id === user.id) {
+      return res.json(project);
+    }
+
+    const { error: joinError } = await supabase
+      .from('project_collaborators')
+      .insert({
+        project_id: projectId,
+        user_id: user.id
+      });
+
+    // Ignore duplicate key error (code 23505) in case they already joined
+    if (joinError && (joinError as any).code !== '23505') {
+      throw joinError;
+    }
+
+    res.json(project);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 3. Delete a project (leaves if collaborator, deletes if owner)
+app.delete('/api/projects/:id', authenticateUser, async (req, res) => {
+  const { id } = req.params;
+  const user = (req as any).user;
+
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+  if (!isUuid) {
+    return res.status(400).json({ error: 'Invalid project ID format' });
+  }
+
+  try {
+    // Check project ownership
+    const { data: project, error: getError } = await supabase
+      .from('projects')
+      .select('user_id')
+      .eq('id', id)
+      .single();
+
+    if (getError || !project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    if (project.user_id === user.id) {
+      // Owner deletes the project completely
+      const { error: deleteError } = await supabase
+        .from('projects')
+        .delete()
+        .eq('id', id);
+      if (deleteError) throw deleteError;
+    } else {
+      // Collaborator leaves the project
+      const { error: leaveError } = await supabase
+        .from('project_collaborators')
+        .delete()
+        .eq('project_id', id)
+        .eq('user_id', user.id);
+      if (leaveError) throw leaveError;
+    }
+
     res.json({ success: true });
   } catch (error: any) {
     res.status(500).json({ error: error.message });

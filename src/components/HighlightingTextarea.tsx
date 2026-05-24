@@ -918,6 +918,49 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
       bracketMatching(),
       closeBrackets(),
       keymap.of([
+        {
+          key: "ArrowDown",
+          run: () => {
+            if (latestRef.current.showPicker && latestRef.current.pickerOptions.length > 0) {
+              setSelectedIndex(prev => (prev + 1) % latestRef.current.pickerOptions.length);
+              return true;
+            }
+            return false;
+          }
+        },
+        {
+          key: "ArrowUp",
+          run: () => {
+            if (latestRef.current.showPicker && latestRef.current.pickerOptions.length > 0) {
+              setSelectedIndex(prev => (prev - 1 + latestRef.current.pickerOptions.length) % latestRef.current.pickerOptions.length);
+              return true;
+            }
+            return false;
+          }
+        },
+        {
+          key: "Enter",
+          run: () => {
+            if (latestRef.current.showPicker) {
+              const opt = latestRef.current.pickerOptions[latestRef.current.selectedIndex];
+              if (opt) {
+                handleSelectOption(opt);
+              }
+              return true;
+            }
+            return false;
+          }
+        },
+        {
+          key: "Escape",
+          run: () => {
+            if (latestRef.current.showPicker) {
+              setShowPicker(false);
+              return true;
+            }
+            return false;
+          }
+        },
         { key: "Alt-ArrowUp", run: moveLineUp },
         { key: "Alt-ArrowDown", run: moveLineDown },
         {
@@ -1049,32 +1092,6 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
           }
         },
         keydown: (event) => {
-          // Intercept keys if tag picker is active
-          if (latestRef.current.showPicker) {
-            if (event.key === 'ArrowDown') {
-              event.preventDefault();
-              setSelectedIndex(prev => (prev + 1) % latestRef.current.pickerOptions.length);
-              return true;
-            }
-            if (event.key === 'ArrowUp') {
-              event.preventDefault();
-              setSelectedIndex(prev => (prev - 1 + latestRef.current.pickerOptions.length) % latestRef.current.pickerOptions.length);
-              return true;
-            }
-            if (event.key === 'Enter') {
-              event.preventDefault();
-              if (latestRef.current.pickerOptions[latestRef.current.selectedIndex]) {
-                handleSelectOption(latestRef.current.pickerOptions[latestRef.current.selectedIndex]);
-              }
-              return true;
-            }
-            if (event.key === 'Escape') {
-              event.preventDefault();
-              setShowPicker(false);
-              return true;
-            }
-          }
-
           // Trigger Ctrl+Space tag picker
           if (!hideGutters && event.ctrlKey && event.key === ' ') {
             event.preventDefault();

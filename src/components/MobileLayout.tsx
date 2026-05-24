@@ -30,6 +30,9 @@ interface MobileLayoutProps {
   syncActiveDraftWithRemote: () => void;
   onSubconsciousActiveChange: (active: boolean) => void;
   subconsciousActive: boolean;
+  penName: string;
+  setPenName: (name: string) => void;
+  googleDefaultName: string;
 }
 
 export const MobileLayout: React.FC<MobileLayoutProps> = ({
@@ -52,6 +55,9 @@ export const MobileLayout: React.FC<MobileLayoutProps> = ({
   syncActiveDraftWithRemote,
   onSubconsciousActiveChange,
   subconsciousActive,
+  penName,
+  setPenName,
+  googleDefaultName,
 }) => {
   const [activeTab, setActiveTab] = useState<MobileTab>('write');
   const [activePanel, setActivePanel] = useState<'explorer' | 'settings'>('explorer');
@@ -223,6 +229,9 @@ export const MobileLayout: React.FC<MobileLayoutProps> = ({
               setIsSidebarOpen={() => {}}
               isCloudMode={isCloudMode}
               isMobile={true}
+              penName={penName}
+              setPenName={setPenName}
+              googleDefaultName={googleDefaultName}
             />
           </div>
         )}

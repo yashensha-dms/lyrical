@@ -50,7 +50,11 @@ function App() {
     exportAllDrafts,
     importDrafts,
     loadDrafts,
+    penName,
+    setPenName,
   } = useDrafts(session);
+
+  const googleDefaultName = session?.user?.user_metadata?.full_name || session?.user?.user_metadata?.name || session?.user?.email?.split('@')[0] || 'Writer';
 
   const { draftId: urlDraftId, navigate } = useRoute();
   const isMobile = useIsMobile();
@@ -97,10 +101,10 @@ function App() {
   // Handle delete draft: delete and navigate back to homepage if it was the active draft
   const handleDeleteDraft = async (id: string) => {
     const isDeletingActive = activeDraft?.id === id;
-    await deleteDraft(id);
     if (isDeletingActive) {
       navigate('/');
     }
+    await deleteDraft(id);
   };
 
   if (loadingAuth) {
@@ -155,6 +159,9 @@ function App() {
         syncActiveDraftWithRemote={syncActiveDraftWithRemote}
         onSubconsciousActiveChange={setSubconsciousActive}
         subconsciousActive={subconsciousActive}
+        penName={penName}
+        setPenName={setPenName}
+        googleDefaultName={googleDefaultName}
       />
     );
   }
@@ -281,6 +288,9 @@ function App() {
               importDrafts={importDrafts}
               setIsSidebarOpen={setIsSidebarOpen}
               isCloudMode={isCloudMode}
+              penName={penName}
+              setPenName={setPenName}
+              googleDefaultName={googleDefaultName}
             />
           </div>
         )}

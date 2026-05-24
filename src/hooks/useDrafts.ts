@@ -51,6 +51,29 @@ export function useDrafts(session: any) {
   const [provider, setProvider] = useState<WebsocketProvider | null>(null);
   const wsRoomRef = useRef<string | null>(null);
 
+  const [penName, setPenNameState] = useState<string>(() => localStorage.getItem('lyrical_pen_name') || '');
+
+  const setPenName = useCallback((name: string) => {
+    setPenNameState(name);
+    if (name.trim()) {
+      localStorage.setItem('lyrical_pen_name', name.trim());
+    } else {
+      localStorage.removeItem('lyrical_pen_name');
+    }
+  }, []);
+
+  const getDisplayName = useCallback(() => {
+    const savedPenName = localStorage.getItem('lyrical_pen_name');
+    if (savedPenName && savedPenName.trim()) {
+      return savedPenName.trim();
+    }
+    const googleName = session?.user?.user_metadata?.full_name || session?.user?.user_metadata?.name;
+    if (googleName) {
+      return googleName;
+    }
+    return session?.user?.email?.split('@')[0] || 'Writer';
+  }, [session]);
+
   useEffect(() => {
     draftsRef.current = drafts;
   }, [drafts]);
@@ -133,12 +156,8 @@ export function useDrafts(session: any) {
 
     const updateLocalUser = () => {
       const awareness = providerInstance.awareness;
-      const states = Array.from(awareness.getStates().keys()).sort((a, b) => a - b);
-      const index = states.indexOf(awareness.clientID);
-      const writerNum = index >= 0 ? index + 1 : 1;
-
       const currentState = awareness.getLocalState();
-      const newName = `Writer ${writerNum}`;
+      const newName = getDisplayName();
 
       if (!currentState?.user || currentState.user.name !== newName) {
         awareness.setLocalStateField('user', {
@@ -150,7 +169,7 @@ export function useDrafts(session: any) {
 
     providerInstance.awareness.on('change', updateLocalUser);
     providerInstance.awareness.setLocalStateField('user', {
-      name: 'Writer 1',
+      name: getDisplayName(),
       color: assignedColor
     });
     updateLocalUser();
@@ -184,6 +203,22 @@ export function useDrafts(session: any) {
       disconnectWs();
     }
   }, [isCloudMode, activeDraftId, connectWs, disconnectWs]);
+
+  // Update Yjs awareness if penName changes while connected
+  useEffect(() => {
+    if (provider && session) {
+      const displayName = penName.trim() || session?.user?.user_metadata?.full_name || session?.user?.user_metadata?.name || session?.user?.email?.split('@')[0] || 'Writer';
+      const awareness = provider.awareness;
+      const currentState = awareness.getLocalState();
+      
+      if (!currentState?.user || currentState.user.name !== displayName) {
+        awareness.setLocalStateField('user', {
+          name: displayName,
+          color: currentState?.user?.color || '#C0694E'
+        });
+      }
+    }
+  }, [penName, provider, session]);
 
   // Cleanup WS on unmount
   useEffect(() => {
@@ -309,8 +344,44 @@ export function useDrafts(session: any) {
     setDrafts(loaded);
 
     // Determine which draft/project to activate
-    if (urlDraftIdToUse && loaded.some(d => d.id === urlDraftIdToUse)) {
-      setActiveDraftId(urlDraftIdToUse);
+    if (urlDraftIdToUse) {
+      const exists = loaded.some(d => d.id === urlDraftIdToUse);
+      if (exists) {
+        setActiveDraftId(urlDraftIdToUse);
+      } else if (cloudActive) {
+        // Attempt to auto-join the shared project link
+        try {
+          const joinRes = await fetch(`/api/projects/${urlDraftIdToUse}/join`, {
+            method: 'POST',
+            headers: getAuthHeaders()
+          });
+          if (joinRes.ok) {
+            const data = await joinRes.json();
+            const joinedProject: Draft = {
+              id: data.id,
+              title: data.title,
+              content: '',
+              targetTemplate: '',
+              syllableTolerance: 1,
+              createdAt: Date.parse(data.created_at) || Date.now(),
+              updatedAt: Date.parse(data.created_at) || Date.now()
+            };
+            setDrafts(prev => {
+              if (prev.some(d => d.id === joinedProject.id)) return prev;
+              return [joinedProject, ...prev];
+            });
+            setActiveDraftId(joinedProject.id);
+          } else {
+            console.warn(`[loadDrafts] Failed to join project: ${urlDraftIdToUse}`);
+            setActiveDraftId(null);
+          }
+        } catch (err) {
+          console.error('[loadDrafts] Error joining project:', err);
+          setActiveDraftId(null);
+        }
+      } else {
+        setActiveDraftId(null);
+      }
     } else {
       setActiveDraftId(null);
     }
@@ -462,7 +533,9 @@ export function useDrafts(session: any) {
       setActiveDraftId(null);
     }
 
-    if (isCloudMode) {
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+
+    if (isCloudMode && isUuid) {
       try {
         const res = await fetch(`/api/projects/${id}`, {
           method: 'DELETE',
@@ -505,5 +578,7 @@ export function useDrafts(session: any) {
     exportAllDrafts,
     importDrafts,
     loadDrafts,
+    penName,
+    setPenName,
   };
 }
