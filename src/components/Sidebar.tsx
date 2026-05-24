@@ -4,7 +4,7 @@ import type { Draft } from '../hooks/useDrafts';
 import { AudioDemoArea } from './AudioDemoArea';
 import * as Y from 'yjs';
 import { WebsocketProvider } from 'y-websocket';
-import { useYjsTextarea } from '../hooks/useYjsTextarea';
+import { HighlightingTextarea } from './HighlightingTextarea';
 
 interface Phrase {
   id: string;
@@ -51,14 +51,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [deletingDraftId, setDeletingDraftId] = useState<string | null>(null);
   const [isClearingAll, setIsClearingAll] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
-  const [toastTimeoutId, setToastTimeoutId] = useState<any>(null);
+  const [toastTimeoutId, setToastTimeoutId] = useState<number | null>(null);
 
   // Yjs Scrapbook Textarea Binding
   const scrapbookRef = useRef<HTMLTextAreaElement>(null);
   const scrapbookYText = yDoc?.getText('scrapbook');
-  const scrapbookBinding = useYjsTextarea(scrapbookYText, provider || null, scrapbookRef);
-
-  const scrapbookOnChange = scrapbookYText ? scrapbookBinding.onChange : (e: React.ChangeEvent<HTMLTextAreaElement>) => updateActiveDraft({ scrapbook: e.target.value });
 
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
     if (toastTimeoutId) {
@@ -633,15 +630,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <label htmlFor="scrapbook-editor" className="text-[10px] uppercase tracking-wider text-ink-muted font-semibold select-none">
                 Inspirations & Drama Notes
               </label>
-              <textarea
-                id="scrapbook-editor"
+              <HighlightingTextarea
                 ref={scrapbookRef}
-                value={scrapbookYText ? undefined : (activeDraft?.scrapbook || '')}
-                defaultValue={scrapbookYText ? scrapbookYText.toString() : undefined}
-                onChange={scrapbookOnChange}
-                spellCheck="false"
+                value={activeDraft?.scrapbook || ''}
+                onChange={(val) => updateActiveDraft({ scrapbook: val })}
+                yText={scrapbookYText}
+                provider={provider}
                 placeholder="Dump pop culture quotes, chick flick lines, overheard dialogues, vocalist drama notes, or basic chords here..."
-                className="flex-1 w-full bg-paper/60 border border-paper-darker rounded-lg p-3 text-xs text-ink placeholder-ink-light font-serif leading-relaxed resize-none focus:outline-none focus:border-terracotta focus:bg-paper focus:ring-2 focus:ring-terracotta/20 transition"
+                hideGutters={true}
+                className="flex-1 w-full bg-paper/60 border border-paper-darker rounded-lg text-xs font-serif focus-within:border-terracotta focus-within:bg-paper focus-within:ring-2 focus-within:ring-terracotta/20 transition overflow-hidden"
               />
             </div>
           ) : (

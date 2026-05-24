@@ -8,7 +8,7 @@ interface ActivityBarProps {
 }
 
 export const ActivityBar: React.FC<ActivityBarProps> = ({
-  activePanel,
+activePanel,
   setActivePanel,
   isSidebarOpen,
   setIsSidebarOpen,

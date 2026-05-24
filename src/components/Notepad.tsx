@@ -1,68 +1,11 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
-import { AlertCircle, Brain, Timer, ChevronDown, X, Share2, Check } from 'lucide-react';
-import { countLineSyllables } from '../utils/syllables';
+import { Brain, Timer, ChevronDown, X, Share2, Check } from 'lucide-react';
 import type { Draft } from '../hooks/useDrafts';
 import { HighlightingTextarea } from './HighlightingTextarea';
 import * as Y from 'yjs';
 import { WebsocketProvider } from 'y-websocket';
 
-// Text caret coordinate mirroring helper
-function getTextCaretCoordinates(textarea: HTMLTextAreaElement, index: number): { top: number; left: number } {
-  const { scrollLeft, scrollTop } = textarea;
-  const style = window.getComputedStyle(textarea);
 
-  const div = document.createElement('div');
-  document.body.appendChild(div);
-
-  const copyProperties = [
-    'direction',
-    'boxSizing',
-    'width',
-    'height',
-    'overflowX',
-    'overflowY',
-    'borderStyle',
-    'borderWidth',
-    'paddingTop',
-    'paddingRight',
-    'paddingBottom',
-    'paddingLeft',
-    'fontFamily',
-    'fontSize',
-    'fontWeight',
-    'fontStyle',
-    'lineHeight',
-    'textTransform',
-    'wordBreak',
-    'whiteSpace',
-  ];
-
-  copyProperties.forEach(prop => {
-    // @ts-ignore
-    div.style[prop] = style[prop];
-  });
-
-  div.style.position = 'absolute';
-  div.style.visibility = 'hidden';
-  div.style.whiteSpace = 'pre-wrap';
-  div.style.wordWrap = 'break-word';
-
-  const text = textarea.value.substring(0, index);
-  div.textContent = text;
-
-  const span = document.createElement('span');
-  span.textContent = textarea.value.substring(index, index + 1) || '.';
-  div.appendChild(span);
-
-  const caretCoordinates = {
-    top: span.offsetTop + textarea.offsetTop - scrollTop,
-    left: span.offsetLeft + textarea.offsetLeft - scrollLeft
-  };
-
-  document.body.removeChild(div);
-
-  return caretCoordinates;
-}
 
 interface NotepadProps {
   draftId: string;
@@ -93,158 +36,17 @@ export const Notepad: React.FC<NotepadProps> = ({
   updateActiveDraft,
   setSelectedWord,
   onRegisterReplace,
-  remoteDraft: _remoteDraft,
   setIsEditorFocused,
-  syncActiveDraftWithRemote: _syncActiveDraftWithRemote,
   isCloudMode,
   onSubconsciousActiveChange,
   isMobile = false,
   yDoc,
   provider,
 }) => {
-  const gutterRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const lastSelectionRef = useRef<{ start: number; end: number } | null>(null);
 
-  // Collaborative Awareness States
-  const [collaborators, setCollaborators] = useState<any[]>([]);
-  const [cursorCoords, setCursorCoords] = useState<{
-    [clientID: number]: { top: number; left: number; name: string; color: string }
-  }>({});
 
-  // Sync awareness states from provider
-  useEffect(() => {
-    if (!provider) {
-      setCollaborators([]);
-      return;
-    }
-
-    const handleAwarenessChange = () => {
-      const states = provider.awareness.getStates();
-      const currentClientId = provider.awareness.clientID;
-      const list: any[] = [];
-      states.forEach((state: any, clientID: number) => {
-        if (clientID === currentClientId) return; // skip self
-        if (state.user && state.cursor) {
-          list.push({
-            clientID,
-            user: state.user,
-            cursor: state.cursor
-          });
-        }
-      });
-      setCollaborators(list);
-    };
-
-    provider.awareness.on('change', handleAwarenessChange);
-    handleAwarenessChange();
-
-    return () => {
-      provider.awareness.off('change', handleAwarenessChange);
-    };
-  }, [provider]);
-
-  // Shift collaborator cursors locally when Yjs document updates
-  useEffect(() => {
-    const yText = yDoc?.getText('content');
-    if (!yText) return;
-
-    const handleYTextChange = (event: Y.YTextEvent) => {
-      if (!event.changes || !event.changes.delta) return;
-
-      setCollaborators(prev => {
-        if (prev.length === 0) return prev;
-
-        return prev.map(collab => {
-          if (!collab.cursor) return collab;
-          let newAnchor = collab.cursor.anchor;
-          let newHead = collab.cursor.head;
-          let index = 0;
-
-          event.changes.delta.forEach(change => {
-            if (change.retain) {
-              index += change.retain;
-            } else if (change.insert) {
-              const len = typeof change.insert === 'string' ? change.insert.length : 1;
-              if (index < newAnchor) {
-                newAnchor += len;
-              }
-              if (index < newHead) {
-                newHead += len;
-              }
-              index += len;
-            } else if (change.delete) {
-              const len = change.delete;
-              if (index < newAnchor) {
-                newAnchor -= Math.min(len, newAnchor - index);
-              }
-              if (index < newHead) {
-                newHead -= Math.min(len, newHead - index);
-              }
-            }
-          });
-
-          return {
-            ...collab,
-            cursor: {
-              anchor: newAnchor,
-              head: newHead
-            }
-          };
-        });
-      });
-    };
-
-    yText.observe(handleYTextChange);
-    return () => {
-      yText.unobserve(handleYTextChange);
-    };
-  }, [yDoc]);
-
-  // Compute and update caret coordinate offsets
-  const updateCursorCoordinates = useCallback(() => {
-    const textarea = textareaRef.current;
-    if (!textarea || collaborators.length === 0) {
-      setCursorCoords({});
-      return;
-    }
-
-    const coords: typeof cursorCoords = {};
-    collaborators.forEach(collab => {
-      try {
-        const index = collab.cursor.anchor;
-        const c = getTextCaretCoordinates(textarea, index);
-        coords[collab.clientID] = {
-          top: c.top,
-          left: c.left,
-          name: collab.user.name,
-          color: collab.user.color
-        };
-      } catch (e) {
-        // ignore coordinates calculations that go out-of-bounds
-      }
-    });
-    setCursorCoords(coords);
-  }, [collaborators]);
-
-  // Recalculate coordinates on scrolls, window resizing, and content updates
-  useEffect(() => {
-    updateCursorCoordinates();
-
-    window.addEventListener('resize', updateCursorCoordinates);
-
-    const textarea = textareaRef.current;
-    if (textarea) {
-      textarea.addEventListener('scroll', updateCursorCoordinates);
-    }
-
-    return () => {
-      window.removeEventListener('resize', updateCursorCoordinates);
-      if (textarea) {
-        textarea.removeEventListener('scroll', updateCursorCoordinates);
-      }
-    };
-  }, [collaborators, updateCursorCoordinates]);
 
   // Subconscious Blind Timer States
   const [subconsciousActive, setSubconsciousActive] = useState(false);
@@ -446,24 +248,7 @@ export const Notepad: React.FC<NotepadProps> = ({
     }
   };
 
-  // Sync scroll positions between textarea and gutter
-  const handleScroll = () => {
-    if (textareaRef.current && gutterRef.current) {
-      gutterRef.current.scrollTop = textareaRef.current.scrollTop;
-    }
-  };
 
-  // Parse lines to display syllable count in gutter
-  const lines = content.split('\n');
-
-  // Parse targets from targetTemplate
-  const targets = React.useMemo(() => {
-    return targetTemplate
-      .replace(/[-\s,]+/g, '\n')
-      .split('\n')
-      .map(x => parseInt(x.trim()))
-      .filter(x => !isNaN(x));
-  }, [targetTemplate]);
 
   // Capture selected word on mouse-up or double-click
   const handleTextSelection = () => {
@@ -625,91 +410,8 @@ export const Notepad: React.FC<NotepadProps> = ({
       )}
 
 
-
       {/* Editor Main Section */}
       <div className="flex-1 flex min-h-0 relative">
-        {/* Scrollable Gutter (Line Numbers + Syllable Counts) — hidden on mobile */}
-        {!isMobile && (
-          <div
-            ref={gutterRef}
-            className="w-16 bg-paper-dark/50 border-r border-paper-darker flex flex-col overflow-hidden select-none pointer-events-none text-[11px] font-mono text-ink-light flex-shrink-0 py-6"
-          >
-            {(() => {
-              let lyricLineCount = 0;
-              return lines.map((lineText, idx) => {
-                const cleanLine = lineText.trim();
-                const isBackup = /^>\s?/.test(cleanLine);
-                const syllableCount = cleanLine && !isBackup ? countLineSyllables(cleanLine) : 0;
-                const isHeader = cleanLine.startsWith('[');
-                const isEmpty = !cleanLine;
-
-                // Check target matches (skip headers, empties, backup lines)
-                let isMismatch = false;
-                let isNearMatch = false;
-                let targetCount = 0;
-
-                if (targets.length > 0 && !isHeader && !isEmpty && !isBackup) {
-                  targetCount = targets[lyricLineCount % targets.length];
-                  const difference = Math.abs(syllableCount - targetCount);
-
-                  if (difference > 0) {
-                    if (difference <= syllableTolerance) {
-                      isNearMatch = true;
-                    } else {
-                      isMismatch = true;
-                    }
-                  }
-                  lyricLineCount++;
-                }
-
-                return (
-                  <div
-                    key={idx}
-                    className="h-8 flex items-center justify-between px-2 w-full leading-8 flex-shrink-0"
-                    style={{ height: '32px' }}
-                  >
-                    {/* Line Number */}
-                    <span className="text-[9px] text-ink-light/50">{idx + 1}</span>
-
-                    {/* Syllable Count Badge */}
-                    {isBackup ? (
-                      <span className="text-[8px] font-mono font-semibold text-terracotta/40 px-1 italic">alt</span>
-                    ) : cleanLine ? (
-                      isHeader ? (
-                        <span className="text-[9px] uppercase font-semibold text-terracotta/40 px-1">sec</span>
-                      ) : (
-                        <span
-                          className={`px-1 rounded font-semibold text-[10px] flex items-center gap-0.5 transition-colors duration-150 ${
-                            isMismatch
-                              ? 'bg-amber-light text-amber-DEFAULT font-bold'
-                              : isNearMatch
-                              ? 'bg-paper-darker border border-terracotta/20 text-ink font-medium'
-                              : 'bg-paper-darker text-ink-muted'
-                          }`}
-                          title={
-                            targets.length > 0
-                              ? isMismatch
-                                ? `Mismatch! Target: ${targetCount}, Actual: ${syllableCount}`
-                                : isNearMatch
-                                ? `Near Match (±${syllableTolerance}). Target: ${targetCount}, Actual: ${syllableCount}`
-                                : `Matches target of ${targetCount} syllables`
-                              : ''
-                          }
-                        >
-                          {syllableCount}
-                          {isMismatch && <AlertCircle className="w-2.5 h-2.5 text-amber stroke-[2.5]" />}
-                        </span>
-                      )
-                    ) : (
-                      <span></span>
-                    )}
-                  </div>
-                );
-              });
-            })()}
-          </div>
-        )}
-
         {/* Text Area Canvas */}
         <div className="flex-1 h-full min-w-0 relative" onClick={(e) => e.stopPropagation()}>
           <HighlightingTextarea
@@ -720,7 +422,6 @@ export const Notepad: React.FC<NotepadProps> = ({
             provider={provider}
             onFocus={() => setIsEditorFocused(true)}
             onBlur={() => setIsEditorFocused(false)}
-            onScroll={handleScroll}
             onMouseUp={handleMouseUp}
             onKeyUp={subconsciousActive ? undefined : handleTextSelection}
             onKeyDown={handleKeyDown}
@@ -728,33 +429,10 @@ export const Notepad: React.FC<NotepadProps> = ({
             placeholder={subconsciousActive ? "Keep typing, don't stop, don't look back..." : "Write your lyrics here..."}
             subconsciousActive={subconsciousActive}
             isMobile={isMobile}
+            targetTemplate={targetTemplate}
+            syllableTolerance={syllableTolerance}
+            title={title}
           />
-
-          {/* Collaborative Cursors Overlay */}
-          {Object.entries(cursorCoords).map(([clientID, coord]) => (
-            <div
-              key={clientID}
-              className="absolute pointer-events-none z-30 transition-all duration-75 ease-out"
-              style={{
-                top: `${coord.top}px`,
-                left: `${coord.left}px`,
-              }}
-            >
-              {/* Cursor Caret Line */}
-              <div
-                className="w-[2px] h-[24px]"
-                style={{ backgroundColor: coord.color }}
-              />
-
-              {/* Cursor Name Flag */}
-              <div
-                className="absolute left-0 bottom-full mb-0.5 px-1.5 py-0.5 rounded text-[9px] font-mono font-bold text-white whitespace-nowrap shadow-sm select-none"
-                style={{ backgroundColor: coord.color }}
-              >
-                {coord.name}
-              </div>
-            </div>
-          ))}
         </div>
       </div>
     </div>
