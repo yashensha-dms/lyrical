@@ -1,19 +1,19 @@
-import { FileText, BookOpen, Settings, Mic, Quote, PanelLeftClose, PanelLeft } from 'lucide-react';
+import { FileText, Settings, PanelLeftClose, PanelLeft } from 'lucide-react';
 
 interface ActivityBarProps {
-  activePanel: 'explorer' | 'scrapbook' | 'audio' | 'catcher' | 'settings';
-  setActivePanel: (panel: 'explorer' | 'scrapbook' | 'audio' | 'catcher' | 'settings') => void;
+  activePanel: 'explorer' | 'settings';
+  setActivePanel: (panel: 'explorer' | 'settings') => void;
   isSidebarOpen: boolean;
   setIsSidebarOpen: (open: boolean) => void;
 }
 
 export const ActivityBar: React.FC<ActivityBarProps> = ({
-activePanel,
+  activePanel,
   setActivePanel,
   isSidebarOpen,
   setIsSidebarOpen,
 }) => {
-  const handleItemClick = (panel: 'explorer' | 'scrapbook' | 'audio' | 'catcher' | 'settings') => {
+  const handleItemClick = (panel: 'explorer' | 'settings') => {
     if (activePanel === panel && isSidebarOpen) {
       setIsSidebarOpen(false);
     } else {
@@ -24,9 +24,6 @@ activePanel,
 
   const navItems = [
     { id: 'explorer' as const, label: 'Drafts Explorer', icon: FileText },
-    { id: 'scrapbook' as const, label: 'Method Scrapbook', icon: BookOpen },
-    { id: 'audio' as const, label: 'Voice Memos', icon: Mic },
-    { id: 'catcher' as const, label: 'Phrase Catcher', icon: Quote },
     { id: 'settings' as const, label: 'Workspace Settings', icon: Settings },
   ];
 

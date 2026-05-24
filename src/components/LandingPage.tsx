@@ -115,14 +115,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                       {draft.content.replace(/^\[.*?\]\n?/gm, '').trim().split('\n')[0]}
                     </p>
                   )}
-
                   <div className="flex items-center gap-3 text-[10px] text-ink-light font-mono">
                     <span>{wordCount(draft.content)} words</span>
-                    {draft.audioCount > 0 && (
-                      <span>🎙 {draft.audioCount} memo{draft.audioCount > 1 ? 's' : ''}</span>
-                    )}
-                  </div>
-                </button>
+                  </div>                </button>
               ))}
             </div>
           )}

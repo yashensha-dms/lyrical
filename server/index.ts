@@ -5,7 +5,7 @@ import dotenv from 'dotenv';
 import path from 'path';
 import http from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
-import { DraftModel, AudioMemoModel } from './models';
+import { DraftModel } from './models';
 
 dotenv.config();
 
@@ -49,7 +49,6 @@ function debounce<T extends (...args: any[]) => void>(func: T, wait: number): (.
 interface CachedDraft {
   title: string;
   content: string;
-  scrapbook: string;
   targetTemplate: string;
   syllableTolerance: number;
   updatedAt: Date;
@@ -64,7 +63,6 @@ const getLatestDraftState = (id: string, mongoDoc: any) => {
       return {
         title: ydoc.getText('title').toString(),
         content: ydoc.getText('content').toString(),
-        scrapbook: ydoc.getText('scrapbook').toString(),
         targetTemplate: ydoc.getText('targetTemplate').toString(),
         syllableTolerance: ydoc.getMap('settings').get('syllableTolerance') as number ?? 1,
         updatedAt: new Date()
@@ -82,7 +80,6 @@ const getLatestDraftState = (id: string, mongoDoc: any) => {
   return {
     title: mongoDoc?.title || '',
     content: mongoDoc?.content || '',
-    scrapbook: mongoDoc?.scrapbook || '',
     targetTemplate: mongoDoc?.targetTemplate || '',
     syllableTolerance: mongoDoc?.syllableTolerance ?? 1,
     updatedAt: mongoDoc?.updatedAt || new Date()
@@ -100,14 +97,12 @@ setPersistence({
         // Initialize Yjs shared types with values from MongoDB if empty
         const titleText = ydoc.getText('title');
         const contentText = ydoc.getText('content');
-        const scrapbookText = ydoc.getText('scrapbook');
         const templateText = ydoc.getText('targetTemplate');
         const settingsMap = ydoc.getMap('settings');
 
         ydoc.transact(() => {
           if (titleText.length === 0 && draft.title) titleText.insert(0, draft.title);
           if (contentText.length === 0 && draft.content) contentText.insert(0, draft.content);
-          if (scrapbookText.length === 0 && draft.scrapbook) scrapbookText.insert(0, draft.scrapbook);
           if (templateText.length === 0 && draft.targetTemplate) templateText.insert(0, draft.targetTemplate);
           if (settingsMap.get('syllableTolerance') === undefined) {
             settingsMap.set('syllableTolerance', draft.syllableTolerance ?? 1);
@@ -120,7 +115,6 @@ setPersistence({
 
     const titleText = ydoc.getText('title');
     const contentText = ydoc.getText('content');
-    const scrapbookText = ydoc.getText('scrapbook');
     const templateText = ydoc.getText('targetTemplate');
     const settingsMap = ydoc.getMap('settings');
 
@@ -130,7 +124,6 @@ setPersistence({
         await DraftModel.findByIdAndUpdate(docName, {
           title: titleText.toString(),
           content: contentText.toString(),
-          scrapbook: scrapbookText.toString(),
           targetTemplate: templateText.toString(),
           syllableTolerance: settingsMap.get('syllableTolerance') ?? 1,
           updatedAt: new Date()
@@ -149,7 +142,6 @@ setPersistence({
     try {
       const title = ydoc.getText('title').toString();
       const content = ydoc.getText('content').toString();
-      const scrapbook = ydoc.getText('scrapbook').toString();
       const targetTemplate = ydoc.getText('targetTemplate').toString();
       const syllableTolerance = ydoc.getMap('settings').get('syllableTolerance') as number ?? 1;
       const updatedAt = new Date();
@@ -158,7 +150,6 @@ setPersistence({
       savingDocs.set(docName, {
         title,
         content,
-        scrapbook,
         targetTemplate,
         syllableTolerance,
         updatedAt
@@ -167,7 +158,6 @@ setPersistence({
       await DraftModel.findByIdAndUpdate(docName, {
         title,
         content,
-        scrapbook,
         targetTemplate,
         syllableTolerance,
         updatedAt
@@ -236,10 +226,6 @@ const requireDb = (req: express.Request, res: express.Response, next: express.Ne
 app.get('/api/drafts', requireDb, async (req, res) => {
   try {
     const drafts = await DraftModel.find();
-    const audioCounts = await AudioMemoModel.aggregate([
-      { $group: { _id: '$draftId', count: { $sum: 1 } } }
-    ]);
-    const countMap = new Map(audioCounts.map(a => [a._id, a.count]));
 
     const response = drafts.map(d => {
       const latest = getLatestDraftState(d._id, d);
@@ -247,10 +233,8 @@ app.get('/api/drafts', requireDb, async (req, res) => {
         id: d._id,
         title: latest.title,
         content: latest.content,
-        scrapbook: latest.scrapbook,
         targetTemplate: latest.targetTemplate,
         syllableTolerance: latest.syllableTolerance,
-        audioCount: countMap.get(d._id) || 0,
         createdAt: d.createdAt.toISOString(),
         updatedAt: latest.updatedAt instanceof Date ? latest.updatedAt.toISOString() : new Date(latest.updatedAt).toISOString(),
       };
@@ -274,10 +258,8 @@ app.get('/api/drafts/:id', requireDb, async (req, res) => {
           id,
           title: latest.title,
           content: latest.content,
-          scrapbook: latest.scrapbook,
           targetTemplate: latest.targetTemplate,
           syllableTolerance: latest.syllableTolerance,
-          audioCount: 0,
           createdAt: new Date().toISOString(),
           updatedAt: latest.updatedAt instanceof Date ? latest.updatedAt.toISOString() : new Date(latest.updatedAt).toISOString(),
         });
@@ -285,15 +267,12 @@ app.get('/api/drafts/:id', requireDb, async (req, res) => {
       return res.status(404).json({ error: 'Draft not found' });
     }
     const latest = getLatestDraftState(id, draft);
-    const audioCount = await AudioMemoModel.countDocuments({ draftId: id });
     res.json({
       id: draft._id,
       title: latest.title,
       content: latest.content,
-      scrapbook: latest.scrapbook,
       targetTemplate: latest.targetTemplate,
       syllableTolerance: latest.syllableTolerance,
-      audioCount,
       createdAt: draft.createdAt.toISOString(),
       updatedAt: latest.updatedAt instanceof Date ? latest.updatedAt.toISOString() : new Date(latest.updatedAt).toISOString(),
     });
@@ -304,7 +283,7 @@ app.get('/api/drafts/:id', requireDb, async (req, res) => {
 
 // 3. Create a new draft
 app.post('/api/drafts', requireDb, async (req, res) => {
-  const { id, title, content, scrapbook, targetTemplate, syllableTolerance } = req.body;
+  const { id, title, content, targetTemplate, syllableTolerance } = req.body;
   if (!id) {
     return res.status(400).json({ error: 'Missing draft id' });
   }
@@ -314,7 +293,6 @@ app.post('/api/drafts', requireDb, async (req, res) => {
       _id: id,
       title: title || '',
       content: content || '',
-      scrapbook: scrapbook || '',
       targetTemplate: targetTemplate || '',
       syllableTolerance: syllableTolerance !== undefined ? syllableTolerance : 1,
     });
@@ -324,10 +302,8 @@ app.post('/api/drafts', requireDb, async (req, res) => {
       id: newDraft._id,
       title: newDraft.title,
       content: newDraft.content,
-      scrapbook: newDraft.scrapbook,
       targetTemplate: newDraft.targetTemplate,
       syllableTolerance: newDraft.syllableTolerance ?? 1,
-      audioCount: 0,
       createdAt: newDraft.createdAt.toISOString(),
       updatedAt: newDraft.updatedAt.toISOString(),
     });
@@ -349,7 +325,6 @@ app.put('/api/drafts/:id', requireDb, async (req, res) => {
 
     if (updates.title !== undefined) draft.title = updates.title;
     if (updates.content !== undefined) draft.content = updates.content;
-    if (updates.scrapbook !== undefined) draft.scrapbook = updates.scrapbook;
     if (updates.targetTemplate !== undefined) draft.targetTemplate = updates.targetTemplate;
     if (updates.syllableTolerance !== undefined) draft.syllableTolerance = updates.syllableTolerance;
 
@@ -359,7 +334,6 @@ app.put('/api/drafts/:id', requireDb, async (req, res) => {
       id: draft._id,
       title: draft.title,
       content: draft.content,
-      scrapbook: draft.scrapbook,
       targetTemplate: draft.targetTemplate,
       syllableTolerance: draft.syllableTolerance ?? 1,
       createdAt: draft.createdAt.toISOString(),
@@ -376,7 +350,6 @@ app.delete('/api/drafts/:id', requireDb, async (req, res) => {
 
   try {
     await DraftModel.findByIdAndDelete(id);
-    await AudioMemoModel.deleteMany({ draftId: id });
     res.json({ success: true });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -475,7 +448,6 @@ app.post('/api/sync', requireDb, async (req, res) => {
           _id: draft.id,
           title: draft.title || '',
           content: draft.content || '',
-          scrapbook: draft.scrapbook || '',
           targetTemplate: draft.targetTemplate || '',
           syllableTolerance: draft.syllableTolerance !== undefined ? draft.syllableTolerance : 1,
         },
@@ -483,25 +455,6 @@ app.post('/api/sync', requireDb, async (req, res) => {
       );
     }
     res.json({ success: true });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Get pop associations from Python NLP server
-app.get('/api/pop-associations', async (req, res) => {
-  const queryWord = req.query.word?.toString().toLowerCase().trim();
-  if (!queryWord) {
-    return res.status(400).json({ error: 'Word parameter is required' });
-  }
-
-  try {
-    const response = await fetch(`http://127.0.0.1:5002/api/analyze-word?word=${encodeURIComponent(queryWord)}`);
-    if (!response.ok) {
-      throw new Error(`Python NLP server returned status ${response.status}`);
-    }
-    const data = await response.json();
-    res.json(data);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }

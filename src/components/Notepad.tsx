@@ -14,8 +14,6 @@ interface NotepadProps {
   targetTemplate: string;
   syllableTolerance: number;
   updateActiveDraft: (updates: Partial<Omit<Draft, 'id' | 'createdAt'>>) => void;
-  setSelectedWord: (word: string) => void;
-  onRegisterReplace: (callback: (word: string) => void) => void;
   remoteDraft?: Draft | null;
   setIsEditorFocused: (focused: boolean) => void;
   syncActiveDraftWithRemote?: () => void;
@@ -34,8 +32,6 @@ export const Notepad: React.FC<NotepadProps> = ({
   targetTemplate,
   syllableTolerance,
   updateActiveDraft,
-  setSelectedWord,
-  onRegisterReplace,
   setIsEditorFocused,
   isCloudMode,
   onSubconsciousActiveChange,
@@ -44,7 +40,6 @@ export const Notepad: React.FC<NotepadProps> = ({
   provider,
 }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const lastSelectionRef = useRef<{ start: number; end: number } | null>(null);
 
 
 
@@ -243,53 +238,8 @@ export const Notepad: React.FC<NotepadProps> = ({
     if (subconsciousActive && textareaRef.current) {
       const len = textareaRef.current.value.length;
       textareaRef.current.setSelectionRange(len, len);
-    } else {
-      handleTextSelection();
     }
   };
-
-
-
-  // Capture selected word on mouse-up or double-click
-  const handleTextSelection = () => {
-    if (!textareaRef.current) return;
-    
-    const start = textareaRef.current.selectionStart;
-    const end = textareaRef.current.selectionEnd;
-    
-    if (start === end) return; // no selection
-
-    const selectedText = content.substring(start, end).trim();
-    
-    // Only trigger rhyme search if it's a single word without spaces/numbers
-    if (selectedText && !/\s/.test(selectedText) && /^[a-zA-Z']+$/.test(selectedText)) {
-      setSelectedWord(selectedText);
-      lastSelectionRef.current = { start, end };
-    }
-  };
-
-  const replaceWord = useCallback((replacement: string) => {
-    if (!lastSelectionRef.current) return;
-    const { start, end } = lastSelectionRef.current;
-    const before = content.substring(0, start);
-    const after = content.substring(end);
-    updateActiveDraft({ content: before + replacement + after });
-    
-    setSelectedWord('');
-    lastSelectionRef.current = null;
-    if (textareaRef.current) {
-      textareaRef.current.focus();
-      const newCursorPos = start + replacement.length;
-      setTimeout(() => {
-        textareaRef.current?.setSelectionRange(newCursorPos, newCursorPos);
-      }, 50);
-    }
-  }, [content, updateActiveDraft, setSelectedWord]);
-
-  useEffect(() => {
-    onRegisterReplace(replaceWord);
-    return () => onRegisterReplace(() => {});
-  }, [replaceWord, onRegisterReplace]);
 
   // Keep focus on editor when clicking surrounding canvas areas
   const focusEditor = () => {
@@ -423,7 +373,6 @@ export const Notepad: React.FC<NotepadProps> = ({
             onFocus={() => setIsEditorFocused(true)}
             onBlur={() => setIsEditorFocused(false)}
             onMouseUp={handleMouseUp}
-            onKeyUp={subconsciousActive ? undefined : handleTextSelection}
             onKeyDown={handleKeyDown}
             onSelect={handleSelect}
             placeholder={subconsciousActive ? "Keep typing, don't stop, don't look back..." : "Write your lyrics here..."}

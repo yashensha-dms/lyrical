@@ -1,13 +1,12 @@
 import React, { useState } from 'react';
-import { PenLine, Library, Sparkles, AlertCircle, RefreshCw } from 'lucide-react';
+import { PenLine, Library, AlertCircle, RefreshCw } from 'lucide-react';
 import { Sidebar } from './Sidebar';
 import { Notepad } from './Notepad';
-import { RightPanel } from './RightPanel';
 import type { Draft } from '../hooks/useDrafts';
 import * as Y from 'yjs';
 import { WebsocketProvider } from 'y-websocket';
 
-type MobileTab = 'write' | 'library' | 'tools';
+type MobileTab = 'write' | 'library';
 
 interface MobileLayoutProps {
   // App state
@@ -55,11 +54,7 @@ export const MobileLayout: React.FC<MobileLayoutProps> = ({
   subconsciousActive,
 }) => {
   const [activeTab, setActiveTab] = useState<MobileTab>('write');
-  const [activePanel, setActivePanel] = useState<'explorer' | 'scrapbook' | 'audio' | 'catcher' | 'settings'>('explorer');
-  const [selectedWord, setSelectedWord] = useState('');
-  
-  // Callback function to replace the selected word in the active draft
-  const [replaceWordFn, setReplaceWordFn] = useState<((word: string) => void) | null>(null);
+  const [activePanel, setActivePanel] = useState<'explorer' | 'settings'>('explorer');
 
   // When a draft is selected on Library tab, switch to Write
   const handleSelectDraft = (id: string) => {
@@ -76,15 +71,11 @@ export const MobileLayout: React.FC<MobileLayoutProps> = ({
   const tabs: { id: MobileTab; label: string; Icon: React.FC<{ className?: string }> }[] = [
     { id: 'write',   label: 'Write',   Icon: ({ className }) => <PenLine className={className} /> },
     { id: 'library', label: 'Library', Icon: ({ className }) => <Library className={className} /> },
-    { id: 'tools',   label: 'Tools',   Icon: ({ className }) => <Sparkles className={className} /> },
   ];
 
   // Panel tabs for Library
-  const librarySubTabs: { id: 'explorer' | 'scrapbook' | 'audio' | 'catcher' | 'settings'; label: string }[] = [
+  const librarySubTabs: { id: 'explorer' | 'settings'; label: string }[] = [
     { id: 'explorer',  label: 'Songs' },
-    { id: 'scrapbook', label: 'Scrapbook' },
-    { id: 'audio',     label: 'Voice' },
-    { id: 'catcher',   label: 'Catcher' },
     { id: 'settings',  label: 'Settings' },
   ];
 
@@ -185,8 +176,6 @@ export const MobileLayout: React.FC<MobileLayoutProps> = ({
                 targetTemplate={activeDraft.targetTemplate}
                 syllableTolerance={activeDraft.syllableTolerance ?? 1}
                 updateActiveDraft={updateActiveDraft}
-                setSelectedWord={setSelectedWord}
-                onRegisterReplace={setReplaceWordFn}
                 yDoc={yDoc}
                 provider={provider}
                 setIsEditorFocused={setIsEditorFocused}
@@ -231,38 +220,14 @@ export const MobileLayout: React.FC<MobileLayoutProps> = ({
               deleteDraft={deleteDraft}
               exportAllDrafts={exportAllDrafts}
               importDrafts={importDrafts}
-              setIsSidebarOpen={() => {}} // no-op on mobile
+              setIsSidebarOpen={() => {}}
               isCloudMode={isCloudMode}
               isMobile={true}
-              yDoc={yDoc}
-              provider={provider}
             />
           </div>
         )}
 
-        {/* Tools Tab */}
-        {activeTab === 'tools' && (
-          <div className="w-full h-full">
-            {activeDraft ? (
-              <RightPanel
-                selectedWord={selectedWord}
-                isMobile={true}
-                onReplaceSelectedWord={replaceWordFn || (() => {})}
-              />
-            ) : (
-              <div className="flex-1 h-full bg-paper flex flex-col items-center justify-center text-ink-light gap-3 p-8 text-center">
-                <Sparkles className="w-8 h-8 text-ink-light" />
-                <p className="text-sm text-ink-muted">Open a song to use Rhymes, Simplifier & Templates.</p>
-                <button
-                  onClick={() => setActiveTab('library')}
-                  className="text-terracotta text-xs font-semibold underline cursor-pointer"
-                >
-                  Go to Library
-                </button>
-              </div>
-            )}
-          </div>
-        )}
+
       </main>
 
       {/* ── Bottom Navigation Bar ── */}

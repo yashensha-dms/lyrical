@@ -1,9 +1,8 @@
 import { useState, useEffect } from 'react';
-import { PanelRightClose, PanelRight, AlertCircle, RefreshCw } from 'lucide-react';
+import { AlertCircle, RefreshCw } from 'lucide-react';
 import { ActivityBar } from './components/ActivityBar';
 import { Sidebar } from './components/Sidebar';
 import { Notepad } from './components/Notepad';
-import { RightPanel } from './components/RightPanel';
 import { StatusBar } from './components/StatusBar';
 import { MobileLayout } from './components/MobileLayout';
 import { LandingPage } from './components/LandingPage';
@@ -38,15 +37,8 @@ function App() {
   const isMobile = useIsMobile();
 
   // Layout panel states
-  const [activePanel, setActivePanel] = useState<'explorer' | 'scrapbook' | 'audio' | 'catcher' | 'settings'>('explorer');
+  const [activePanel, setActivePanel] = useState<'explorer' | 'settings'>('explorer');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const [isRightPanelOpen, setIsRightPanelOpen] = useState(true);
-
-  // Selected word for rhyme lookup
-  const [selectedWord, setSelectedWord] = useState('');
-
-  // Word replacement callback
-  const [replaceWordFn, setReplaceWordFn] = useState<((word: string) => void) | null>(null);
 
   // Subconscious writing mode
   const [subconsciousActive, setSubconsciousActive] = useState(false);
@@ -178,19 +170,7 @@ function App() {
           )}
         </div>
 
-        {/* Right: Right Panel Toggle */}
-        <div className="flex items-center gap-1.5">
-          <button
-            onClick={() => setIsRightPanelOpen(!isRightPanelOpen)}
-            className={`p-1.5 rounded transition cursor-pointer hover:bg-paper-dark text-ink-muted hover:text-ink ${
-              isRightPanelOpen ? 'bg-paper-dark text-terracotta' : ''
-            }`}
-            title="Toggle Right Panel"
-            aria-label="Toggle Right Panel"
-          >
-            {isRightPanelOpen ? <PanelRightClose className="w-4 h-4" /> : <PanelRight className="w-4 h-4" />}
-          </button>
-        </div>
+
       </header>
 
       {/* Offline Warning Banner */}
@@ -257,8 +237,6 @@ function App() {
               importDrafts={importDrafts}
               setIsSidebarOpen={setIsSidebarOpen}
               isCloudMode={isCloudMode}
-              yDoc={yDoc}
-              provider={provider}
             />
           </div>
         )}
@@ -271,8 +249,6 @@ function App() {
           targetTemplate={activeDraft.targetTemplate}
           syllableTolerance={activeDraft.syllableTolerance ?? 1}
           updateActiveDraft={updateActiveDraft}
-          setSelectedWord={setSelectedWord}
-          onRegisterReplace={setReplaceWordFn}
           remoteDraft={null}
           setIsEditorFocused={setIsEditorFocused}
           syncActiveDraftWithRemote={syncActiveDraftWithRemote}
@@ -281,18 +257,6 @@ function App() {
           yDoc={yDoc}
           provider={provider}
         />
-
-        {/* 4. Right Panel */}
-        {isRightPanelOpen && (
-          <div className={`transition-all duration-500 h-full flex flex-shrink-0 ${
-            subconsciousActive ? 'opacity-10 pointer-events-none' : ''
-          }`}>
-            <RightPanel
-              selectedWord={selectedWord}
-              onReplaceSelectedWord={replaceWordFn || (() => {})}
-            />
-          </div>
-        )}
       </main>
 
       {/* 5. Status Bar */}
