@@ -1,41 +1,21 @@
 import express from 'express';
 import cors from 'cors';
-import mongoose from 'mongoose';
 import dotenv from 'dotenv';
 import path from 'path';
 import http from 'http';
-import { WebSocketServer, WebSocket } from 'ws';
-import { DraftModel } from './models';
+import { WebSocketServer } from 'ws';
+import * as Y from 'yjs';
+// @ts-ignore
+import { setupWSConnection, setPersistence, docs } from 'y-websocket/bin/utils';
+import { supabase } from './supabase';
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5001;
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/lyrical';
 
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
-
-let isDbConnected = false;
-
-// Connect to MongoDB
-const connectDb = async () => {
-  try {
-    await mongoose.connect(MONGODB_URI);
-    isDbConnected = true;
-    console.log('Successfully connected to MongoDB.');
-  } catch (error) {
-    isDbConnected = false;
-    console.error('MongoDB connection error. Server running in disconnected health state:', error);
-  }
-};
-
-connectDb();
-
-// ── WebSocket Server (Yjs Collaboration) ────────────────────────────────────
-import Y from 'yjs';
-// @ts-ignore
-import { setupWSConnection, setPersistence, docs } from 'y-websocket/bin/utils';
 
 // Simple inline debounce to prevent types and external dependency issues
 function debounce<T extends (...args: any[]) => void>(func: T, wait: number): (...args: Parameters<T>) => void {
@@ -46,91 +26,58 @@ function debounce<T extends (...args: any[]) => void>(func: T, wait: number): (.
   };
 }
 
-interface CachedDraft {
-  title: string;
-  content: string;
-  targetTemplate: string;
-  syllableTolerance: number;
-  updatedAt: Date;
-}
-const savingDocs = new Map<string, CachedDraft>();
-
-const getLatestDraftState = (id: string, mongoDoc: any) => {
-  // 1. Check if it's currently active in Yjs memory
-  if (docs && docs.has(id)) {
-    const ydoc = docs.get(id);
-    if (ydoc) {
-      return {
-        title: ydoc.getText('title').toString(),
-        content: ydoc.getText('content').toString(),
-        targetTemplate: ydoc.getText('targetTemplate').toString(),
-        syllableTolerance: ydoc.getMap('settings').get('syllableTolerance') as number ?? 1,
-        updatedAt: new Date()
-      };
-    }
-  }
-
-  // 2. Check if it's in the process of saving
-  if (savingDocs.has(id)) {
-    const cached = savingDocs.get(id);
-    if (cached) return cached;
-  }
-
-  // 3. Otherwise return database document values
-  return {
-    title: mongoDoc?.title || '',
-    content: mongoDoc?.content || '',
-    targetTemplate: mongoDoc?.targetTemplate || '',
-    syllableTolerance: mongoDoc?.syllableTolerance ?? 1,
-    updatedAt: mongoDoc?.updatedAt || new Date()
-  };
-};
-
-const wss = new WebSocketServer({ noServer: true });
-
-// Setup Yjs MongoDB persistence
+// ── Yjs Collaboration & Supabase Persistence ────────────────────────────────
 setPersistence({
   bindState: async (docName: string, ydoc: Y.Doc) => {
     try {
-      const draft = await DraftModel.findById(docName);
-      if (draft) {
-        // Initialize Yjs shared types with values from MongoDB if empty
-        const titleText = ydoc.getText('title');
-        const contentText = ydoc.getText('content');
-        const templateText = ydoc.getText('targetTemplate');
-        const settingsMap = ydoc.getMap('settings');
+      const { data: project, error } = await supabase
+        .from('projects')
+        .select('title, yjs_state')
+        .eq('id', docName)
+        .single();
 
+      if (error) {
+        console.error(`Error fetching project ${docName} for Yjs binding:`, error.message);
+        return;
+      }
+
+      if (project) {
+        const titleText = ydoc.getText('title');
+        
+        // Hydrate from binary state if it exists
+        if (project.yjs_state) {
+          Y.applyUpdate(ydoc, Buffer.from(project.yjs_state));
+        }
+
+        // Initialize Yjs shared types if empty
         ydoc.transact(() => {
-          if (titleText.length === 0 && draft.title) titleText.insert(0, draft.title);
-          if (contentText.length === 0 && draft.content) contentText.insert(0, draft.content);
-          if (templateText.length === 0 && draft.targetTemplate) templateText.insert(0, draft.targetTemplate);
-          if (settingsMap.get('syllableTolerance') === undefined) {
-            settingsMap.set('syllableTolerance', draft.syllableTolerance ?? 1);
+          if (titleText.length === 0 && project.title) {
+            titleText.insert(0, project.title);
           }
         });
       }
     } catch (err) {
-      console.error(`Error loading draft ${docName} for Yjs persistence:`, err);
+      console.error(`Error loading project ${docName} for Yjs persistence:`, err);
     }
 
-    const titleText = ydoc.getText('title');
-    const contentText = ydoc.getText('content');
-    const templateText = ydoc.getText('targetTemplate');
-    const settingsMap = ydoc.getMap('settings');
-
-    // Debounced save back to MongoDB
+    // Debounced save back to Supabase projects table
     const saveToDb = debounce(async () => {
       try {
-        await DraftModel.findByIdAndUpdate(docName, {
-          title: titleText.toString(),
-          content: contentText.toString(),
-          targetTemplate: templateText.toString(),
-          syllableTolerance: settingsMap.get('syllableTolerance') ?? 1,
-          updatedAt: new Date()
-        });
-        console.log(`Auto-saved collaborative draft ${docName} to MongoDB.`);
-      } catch (err) {
-        console.error(`Failed to auto-save collaborative draft ${docName}:`, err);
+        const title = ydoc.getText('title').toString();
+        const stateUpdate = Y.encodeStateAsUpdate(ydoc);
+
+        const { error } = await supabase
+          .from('projects')
+          .update({
+            title,
+            yjs_state: Buffer.from(stateUpdate)
+          })
+          .eq('id', docName);
+
+        if (error) throw error;
+        console.log(`Auto-saved collaborative project ${docName} to Supabase.`);
+      } catch (err: any) {
+        console.error(`Failed to auto-save collaborative project ${docName}:`, err.message);
       }
     }, 2000);
 
@@ -141,319 +88,176 @@ setPersistence({
   writeState: async (docName: string, ydoc: Y.Doc) => {
     try {
       const title = ydoc.getText('title').toString();
-      const content = ydoc.getText('content').toString();
-      const targetTemplate = ydoc.getText('targetTemplate').toString();
-      const syllableTolerance = ydoc.getMap('settings').get('syllableTolerance') as number ?? 1;
-      const updatedAt = new Date();
+      const stateUpdate = Y.encodeStateAsUpdate(ydoc);
 
-      // Put in cache to prevent race condition during page reload/disconnect
-      savingDocs.set(docName, {
-        title,
-        content,
-        targetTemplate,
-        syllableTolerance,
-        updatedAt
-      });
+      const { error } = await supabase
+        .from('projects')
+        .update({
+          title,
+          yjs_state: Buffer.from(stateUpdate)
+        })
+        .eq('id', docName);
 
-      await DraftModel.findByIdAndUpdate(docName, {
-        title,
-        content,
-        targetTemplate,
-        syllableTolerance,
-        updatedAt
-      });
-      console.log(`Final saved collaborative draft ${docName} to MongoDB.`);
-    } catch (err) {
-      console.error(`Failed to final save collaborative draft ${docName}:`, err);
-    } finally {
-      // Keep it in savingDocs for a small buffer (e.g. 3 seconds) to ensure database writes are fully propagation-committed
-      setTimeout(() => {
-        savingDocs.delete(docName);
-      }, 3000);
+      if (error) throw error;
+      console.log(`Final saved collaborative project ${docName} to Supabase.`);
+    } catch (err: any) {
+      console.error(`Failed to final save collaborative project ${docName}:`, err.message);
     }
   }
 });
 
+const wss = new WebSocketServer({ noServer: true });
 const httpServer = http.createServer(app);
 
-httpServer.on('upgrade', (request, socket, head) => {
+// Secure HTTP connection upgrade check (JWT Auth & Project Ownership)
+httpServer.on('upgrade', async (request, socket, head) => {
   const url = request.url || '';
   if (url.startsWith('/ws/')) {
-    wss.handleUpgrade(request, socket, head, (ws) => {
-      wss.emit('connection', ws, request);
-    });
+    try {
+      const parsedUrl = new URL(url, `http://${request.headers.host || 'localhost'}`);
+      const projectId = parsedUrl.pathname.slice(4); // strip "/ws/"
+      const token = parsedUrl.searchParams.get('token');
+
+      if (!token) {
+        socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+        socket.destroy();
+        return;
+      }
+
+      // 1. Verify user with Supabase JWT
+      const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+      if (authError || !user) {
+        socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+        socket.destroy();
+        return;
+      }
+
+      // 2. Check if user owns the project
+      const { data: project, error: dbError } = await supabase
+        .from('projects')
+        .select('id, user_id')
+        .eq('id', projectId)
+        .single();
+
+      if (dbError || !project || project.user_id !== user.id) {
+        socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
+        socket.destroy();
+        return;
+      }
+
+      // Upgrade to WebSocket connection
+      wss.handleUpgrade(request, socket, head, (ws) => {
+        wss.emit('connection', ws, request);
+      });
+    } catch (err) {
+      socket.write('HTTP/1.1 500 Internal Server Error\r\n\r\n');
+      socket.destroy();
+    }
   } else {
     socket.destroy();
   }
 });
 
 wss.on('connection', (ws: any, req: any) => {
-  const url = req.url || '';
-  const draftId = url.slice(4).split('?')[0]; // strip "/ws/" prefix
-  setupWSConnection(ws, req, { docName: draftId });
+  const parsedUrl = new URL(req.url || '', `http://${req.headers.host || 'localhost'}`);
+  const projectId = parsedUrl.pathname.slice(4);
+  setupWSConnection(ws, req, { docName: projectId });
 });
 
-console.log(`WebSocket server attached at /ws/:draftId`);
+console.log(`WebSocket server attached at /ws/:projectId`);
 
-// ── REST API ────────────────────────────────────────────────────────────────
-
-app.get('/api/health', async (req, res) => {
-  if (!isDbConnected) {
-    try {
-      if (mongoose.connection.readyState === 0) {
-        await connectDb();
-      } else {
-        isDbConnected = mongoose.connection.readyState === 1;
-      }
-    } catch (e) {
-      isDbConnected = false;
+// ── REST API Authentication Middleware ──────────────────────────────────────
+const authenticateUser = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Missing or invalid Authorization header' });
+  }
+  const token = authHeader.split(' ')[1];
+  try {
+    const { data: { user }, error } = await supabase.auth.getUser(token);
+    if (error || !user) {
+      return res.status(401).json({ error: 'Unauthorized: Invalid token' });
     }
+    (req as any).user = user;
+    next();
+  } catch (err: any) {
+    return res.status(401).json({ error: err.message });
   }
-  res.json({
-    status: 'ok',
-    database: isDbConnected ? 'connected' : 'disconnected'
-  });
-});
-
-const requireDb = (req: express.Request, res: express.Response, next: express.NextFunction) => {
-  if (!isDbConnected) {
-    return res.status(503).json({ error: 'Database is offline' });
-  }
-  next();
 };
 
-// 1. Get all drafts
-app.get('/api/drafts', requireDb, async (req, res) => {
+// ── REST API Endpoints ──────────────────────────────────────────────────────
+
+// Health check endpoint verifying database connectivity
+app.get('/api/health', async (req, res) => {
   try {
-    const drafts = await DraftModel.find();
-
-    const response = drafts.map(d => {
-      const latest = getLatestDraftState(d._id, d);
-      return {
-        id: d._id,
-        title: latest.title,
-        content: latest.content,
-        targetTemplate: latest.targetTemplate,
-        syllableTolerance: latest.syllableTolerance,
-        createdAt: d.createdAt.toISOString(),
-        updatedAt: latest.updatedAt instanceof Date ? latest.updatedAt.toISOString() : new Date(latest.updatedAt).toISOString(),
-      };
-    });
-
-    res.json(response);
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// 2. Get a single draft by ID
-app.get('/api/drafts/:id', requireDb, async (req, res) => {
-  const { id } = req.params;
-  try {
-    const draft = await DraftModel.findById(id);
-    if (!draft) {
-      if (docs && (docs.has(id) || savingDocs.has(id))) {
-        const latest = getLatestDraftState(id, null);
-        return res.json({
-          id,
-          title: latest.title,
-          content: latest.content,
-          targetTemplate: latest.targetTemplate,
-          syllableTolerance: latest.syllableTolerance,
-          createdAt: new Date().toISOString(),
-          updatedAt: latest.updatedAt instanceof Date ? latest.updatedAt.toISOString() : new Date(latest.updatedAt).toISOString(),
-        });
-      }
-      return res.status(404).json({ error: 'Draft not found' });
-    }
-    const latest = getLatestDraftState(id, draft);
+    const { error } = await supabase.from('projects').select('id').limit(1);
     res.json({
-      id: draft._id,
-      title: latest.title,
-      content: latest.content,
-      targetTemplate: latest.targetTemplate,
-      syllableTolerance: latest.syllableTolerance,
-      createdAt: draft.createdAt.toISOString(),
-      updatedAt: latest.updatedAt instanceof Date ? latest.updatedAt.toISOString() : new Date(latest.updatedAt).toISOString(),
+      status: 'ok',
+      database: error ? 'disconnected' : 'connected'
     });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// 3. Create a new draft
-app.post('/api/drafts', requireDb, async (req, res) => {
-  const { id, title, content, targetTemplate, syllableTolerance } = req.body;
-  if (!id) {
-    return res.status(400).json({ error: 'Missing draft id' });
-  }
-
-  try {
-    const newDraft = new DraftModel({
-      _id: id,
-      title: title || '',
-      content: content || '',
-      targetTemplate: targetTemplate || '',
-      syllableTolerance: syllableTolerance !== undefined ? syllableTolerance : 1,
-    });
-    await newDraft.save();
-
-    res.status(201).json({
-      id: newDraft._id,
-      title: newDraft.title,
-      content: newDraft.content,
-      targetTemplate: newDraft.targetTemplate,
-      syllableTolerance: newDraft.syllableTolerance ?? 1,
-      createdAt: newDraft.createdAt.toISOString(),
-      updatedAt: newDraft.updatedAt.toISOString(),
-    });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// 4. Update an existing draft
-app.put('/api/drafts/:id', requireDb, async (req, res) => {
-  const { id } = req.params;
-  const updates = req.body;
-
-  try {
-    const draft = await DraftModel.findById(id);
-    if (!draft) {
-      return res.status(404).json({ error: 'Draft not found' });
-    }
-
-    if (updates.title !== undefined) draft.title = updates.title;
-    if (updates.content !== undefined) draft.content = updates.content;
-    if (updates.targetTemplate !== undefined) draft.targetTemplate = updates.targetTemplate;
-    if (updates.syllableTolerance !== undefined) draft.syllableTolerance = updates.syllableTolerance;
-
-    await draft.save();
-
+  } catch (e) {
     res.json({
-      id: draft._id,
-      title: draft.title,
-      content: draft.content,
-      targetTemplate: draft.targetTemplate,
-      syllableTolerance: draft.syllableTolerance ?? 1,
-      createdAt: draft.createdAt.toISOString(),
-      updatedAt: draft.updatedAt.toISOString(),
+      status: 'ok',
+      database: 'disconnected'
     });
+  }
+});
+
+// 1. Get all projects belonging to logged in user
+app.get('/api/projects', authenticateUser, async (req, res) => {
+  try {
+    const user = (req as any).user;
+    const { data: projects, error } = await supabase
+      .from('projects')
+      .select('id, title, created_at')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    res.json(projects);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
 });
 
-// 5. Delete a draft
-app.delete('/api/drafts/:id', requireDb, async (req, res) => {
+// 2. Create a new project
+app.post('/api/projects', authenticateUser, async (req, res) => {
+  const { title } = req.body;
+  if (!title) {
+    return res.status(400).json({ error: 'Missing project title' });
+  }
+
+  try {
+    const user = (req as any).user;
+    const { data: newProject, error } = await supabase
+      .from('projects')
+      .insert({
+        title,
+        user_id: user.id
+      })
+      .select('id, title, created_at')
+      .single();
+
+    if (error) throw error;
+    res.status(201).json(newProject);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 3. Delete a project
+app.delete('/api/projects/:id', authenticateUser, async (req, res) => {
   const { id } = req.params;
 
   try {
-    await DraftModel.findByIdAndDelete(id);
-    res.json({ success: true });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
+    const user = (req as any).user;
+    const { error } = await supabase
+      .from('projects')
+      .delete()
+      .eq('id', id)
+      .eq('user_id', user.id);
 
-// 6. List all audio memos for a draft
-app.get('/api/drafts/:id/audios', requireDb, async (req, res) => {
-  const { id } = req.params;
-
-  try {
-    const memos = await AudioMemoModel.find({ draftId: id }, 'draftId duration mimeType createdAt');
-    res.json(memos.map(m => ({
-      id: m._id,
-      draftId: m.draftId,
-      duration: m.duration,
-      mimeType: m.mimeType,
-      createdAt: m.createdAt.toISOString(),
-    })));
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// 7. Get a specific audio memo
-app.get('/api/drafts/:id/audio/:audioId', requireDb, async (req, res) => {
-  const { audioId } = req.params;
-
-  try {
-    const memo = await AudioMemoModel.findById(audioId);
-    if (!memo) {
-      return res.status(404).json({ error: 'Audio memo not found' });
-    }
-    res.json({
-      id: memo._id,
-      draftId: memo.draftId,
-      audioData: memo.audioData,
-      duration: memo.duration,
-      mimeType: memo.mimeType,
-      createdAt: memo.createdAt.toISOString(),
-    });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// 8. Create a new audio memo
-app.post('/api/drafts/:id/audio', requireDb, async (req, res) => {
-  const { id } = req.params;
-  const { audioData, duration, mimeType } = req.body;
-
-  if (!audioData || duration === undefined || !mimeType) {
-    return res.status(400).json({ error: 'Missing required audio fields' });
-  }
-
-  try {
-    const memo = new AudioMemoModel({ draftId: id, audioData, duration, mimeType });
-    await memo.save();
-    res.status(201).json({
-      id: memo._id,
-      draftId: memo.draftId,
-      audioData: memo.audioData,
-      duration: memo.duration,
-      mimeType: memo.mimeType,
-      createdAt: memo.createdAt.toISOString(),
-    });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// 9. Delete a specific audio memo
-app.delete('/api/drafts/:id/audio/:audioId', requireDb, async (req, res) => {
-  const { audioId } = req.params;
-
-  try {
-    await AudioMemoModel.findByIdAndDelete(audioId);
-    res.json({ success: true });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// 10. Bulk sync local drafts to cloud
-app.post('/api/sync', requireDb, async (req, res) => {
-  const { drafts } = req.body;
-  if (!Array.isArray(drafts)) {
-    return res.status(400).json({ error: 'Invalid sync payload' });
-  }
-
-  try {
-    for (const draft of drafts) {
-      await DraftModel.findByIdAndUpdate(
-        draft.id,
-        {
-          _id: draft.id,
-          title: draft.title || '',
-          content: draft.content || '',
-          targetTemplate: draft.targetTemplate || '',
-          syllableTolerance: draft.syllableTolerance !== undefined ? draft.syllableTolerance : 1,
-        },
-        { upsert: true }
-      );
-    }
+    if (error) throw error;
     res.json({ success: true });
   } catch (error: any) {
     res.status(500).json({ error: error.message });

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { AlertCircle, RefreshCw } from 'lucide-react';
+import { AlertCircle, RefreshCw, Music } from 'lucide-react';
 import { ActivityBar } from './components/ActivityBar';
 import { Sidebar } from './components/Sidebar';
 import { Notepad } from './components/Notepad';
@@ -9,8 +9,27 @@ import { LandingPage } from './components/LandingPage';
 import { useDrafts } from './hooks/useDrafts';
 import { useIsMobile } from './hooks/useIsMobile';
 import { useRoute } from './hooks/useRoute';
+import { supabase } from './utils/supabaseClient';
+import { Login } from './components/Login';
 
 function App() {
+  const [session, setSession] = useState<any>(null);
+  const [loadingAuth, setLoadingAuth] = useState(true);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setLoadingAuth(false);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      setLoadingAuth(false);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
   const {
     drafts,
     activeDraft,
@@ -31,7 +50,7 @@ function App() {
     exportAllDrafts,
     importDrafts,
     loadDrafts,
-  } = useDrafts();
+  } = useDrafts(session);
 
   const { draftId: urlDraftId, navigate } = useRoute();
   const isMobile = useIsMobile();
@@ -83,6 +102,21 @@ function App() {
       navigate('/');
     }
   };
+
+  if (loadingAuth) {
+    return (
+      <div className="w-screen h-screen bg-paper flex items-center justify-center">
+        <div className="text-terracotta flex items-center gap-2">
+          <Music className="w-5 h-5 animate-spin" />
+          <span className="font-serif font-bold text-sm tracking-wide">Loading Lyrical...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (!session) {
+    return <Login />;
+  }
 
   // Show landing if no active draft
   const showLanding = !activeDraft;
@@ -170,6 +204,16 @@ function App() {
           )}
         </div>
 
+        {/* Right: User + Sign Out */}
+        <div className="flex items-center gap-3">
+          <span className="text-[11px] text-ink-muted hidden sm:inline">{session?.user?.email}</span>
+          <button
+            onClick={() => supabase.auth.signOut()}
+            className="text-[10px] uppercase font-bold text-ink-muted hover:text-terracotta transition border border-paper-darker hover:border-terracotta/30 px-2 py-1 rounded bg-paper-dark cursor-pointer focus:outline-none"
+          >
+            Sign Out
+          </button>
+        </div>
 
       </header>
 
