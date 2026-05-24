@@ -352,8 +352,9 @@ function enforceTagConventions(view: EditorView) {
 // Generate tag picker options
 function getPickerOptions(view: EditorView): string[] {
   const doc = view.state.doc;
-  const sections: { baseName: string, text: string, isEmpty: boolean }[] = [];
-  let currentSec: { baseName: string, contentLines: string[] } | null = null;
+  // Track full tagName alongside baseName so the picker can show exact labels
+  const sections: { tagName: string, baseName: string, text: string, isEmpty: boolean }[] = [];
+  let currentSec: { tagName: string, baseName: string, contentLines: string[] } | null = null;
 
   for (let i = 1; i <= doc.lines; i++) {
     const line = doc.line(i);
@@ -363,6 +364,7 @@ function getPickerOptions(view: EditorView): string[] {
     if (tagMatch) {
       if (currentSec) {
         sections.push({
+          tagName: currentSec.tagName,
           baseName: currentSec.baseName,
           text: currentSec.contentLines.join('\n').trim(),
           isEmpty: currentSec.contentLines.join('\n').trim().length === 0
@@ -371,7 +373,7 @@ function getPickerOptions(view: EditorView): string[] {
       const tagContent = tagMatch[1].trim();
       const numMatch = tagContent.match(/^(.*?)(?:\s+(\d+))?$/);
       const baseName = numMatch ? numMatch[1].trim() : tagContent;
-      currentSec = { baseName, contentLines: [] };
+      currentSec = { tagName: tagContent, baseName, contentLines: [] };
     } else {
       if (currentSec) {
         currentSec.contentLines.push(line.text);
@@ -380,6 +382,7 @@ function getPickerOptions(view: EditorView): string[] {
   }
   if (currentSec) {
     sections.push({
+      tagName: currentSec.tagName,
       baseName: currentSec.baseName,
       text: currentSec.contentLines.join('\n').trim(),
       isEmpty: currentSec.contentLines.join('\n').trim().length === 0
@@ -398,16 +401,20 @@ function getPickerOptions(view: EditorView): string[] {
   });
 
   defaults.forEach(base => {
-    options.push(base);
     const secs = sectionsByBase[base] || [];
-    if (secs.length > 0) {
+    if (secs.length === 0) {
+      // No existing sections for this base — show plain name to create first instance
+      options.push(base);
+    } else {
+      // Deduplicate by content to find independent (non-reference) sections
       const independent: typeof sections = [];
       secs.forEach(s => {
         const isRef = independent.some(ind => ind.text === s.text);
-        if (!isRef) {
-          independent.push(s);
-        }
+        if (!isRef) independent.push(s);
       });
+      // Show each existing independent section by its real tag name (e.g. "Verse 1")
+      independent.forEach(ind => options.push(ind.tagName));
+      // Show a "create next" option only when the last independent has content
       const lastInd = independent[independent.length - 1];
       if (lastInd && !lastInd.isEmpty) {
         options.push(`${base} ${independent.length + 1}`);
@@ -415,10 +422,11 @@ function getPickerOptions(view: EditorView): string[] {
     }
   });
 
+  // Append any custom (non-default) tags that exist in the document
   const customTags = new Set<string>();
   sections.forEach(s => {
     if (!defaults.includes(s.baseName)) {
-      customTags.add(s.baseName);
+      customTags.add(s.tagName);
     }
   });
   customTags.forEach(tag => options.push(tag));
@@ -827,25 +835,40 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
     view.focus();
   };
 
-  const triggerPicker = () => {
+  const triggerPicker = (manualCoords?: { top: number; left: number }) => {
     if (!viewRef.current) return;
     const view = viewRef.current;
+
+    const opts = getPickerOptions(view);
+    if (opts.length === 0) return;
+
+    if (manualCoords) {
+      // Called from context menu — use the provided position directly
+      setPickerCoords(manualCoords);
+      setPickerOptions(opts);
+      setSelectedIndex(0);
+      setShowPicker(true);
+      return;
+    }
+
+    // Called via keyboard shortcut — position at the cursor
     const pos = view.state.selection.main.head;
-    
     try {
       const coords = view.coordsAtPos(pos);
       if (coords && containerRef.current) {
         const containerRect = containerRef.current.getBoundingClientRect();
         const left = coords.left - containerRect.left;
-        const top = coords.bottom - containerRect.top + view.scrollDOM.scrollTop;
-        
-        const opts = getPickerOptions(view);
-        if (opts.length > 0) {
-          setPickerCoords({ top, left });
-          setPickerOptions(opts);
-          setSelectedIndex(0);
-          setShowPicker(true);
-        }
+        const top = coords.bottom - containerRect.top;
+        setPickerCoords({ top, left });
+        setPickerOptions(opts);
+        setSelectedIndex(0);
+        setShowPicker(true);
+      } else if (containerRef.current) {
+        // Cursor not visible — fall back to top-left of the editor
+        setPickerCoords({ top: 48, left: 32 });
+        setPickerOptions(opts);
+        setSelectedIndex(0);
+        setShowPicker(true);
       }
     } catch (e) {
       console.error("Failed to get coordinates", e);
@@ -859,11 +882,15 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
     
     const docText = view.state.doc.toString();
     const sections = parseSectionsForContent(docText);
-    const matchedSec = sections.find(s => s.tagName.toLowerCase() === opt.toLowerCase() || s.baseName.toLowerCase() === opt.toLowerCase());
+    // Match by exact tagName first, then by baseName as fallback
+    const matchedSec = sections.find(s => s.tagName.toLowerCase() === opt.toLowerCase())
+      ?? sections.find(s => s.baseName.toLowerCase() === opt.toLowerCase());
     
     let insertText: string;
     if (matchedSec && matchedSec.content) {
-      insertText = `[${opt}]\n${matchedSec.content}\n`;
+      // Use the matched section's exact tagName so enforceTagConventions
+      // recognises the content hash and treats this as a reference — not a new independent section
+      insertText = `[${matchedSec.tagName}]\n${matchedSec.content}\n`;
     } else {
       insertText = `[${opt}]\n`;
     }
@@ -880,7 +907,9 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
 
   const handleInsertSectionTag = () => {
     setShowContextMenu(false);
-    triggerPicker();
+    // Pass the context menu's position so the picker appears even if the
+    // editor cursor is scrolled out of the visible viewport.
+    triggerPicker({ top: contextCoords.top, left: contextCoords.left });
   };
 
   // Re-sync subconscious writing mode state dynamically
@@ -949,6 +978,14 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
       bracketMatching(),
       closeBrackets(),
       keymap.of([
+        {
+          // Register Ctrl+Space FIRST so it intercepts before defaultKeymap's startCompletion
+          key: "Ctrl-Space",
+          run: () => {
+            triggerPicker();
+            return true;
+          }
+        },
         {
           key: "ArrowDown",
           run: () => {
