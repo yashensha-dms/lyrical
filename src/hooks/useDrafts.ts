@@ -124,9 +124,10 @@ export function useDrafts() {
     const templateText = ydoc.getText('targetTemplate');
     const settingsMap = ydoc.getMap('settings');
 
-    const assignedNumber = Math.floor(Math.random() * 99) + 1;
     const colors = ['#E25C3D', '#2D7A56', '#7C4DB8', '#D97706', '#2563EB', '#DB2777', '#059669', '#78716C'];
-    const assignedColor = colors[Math.floor(Math.random() * colors.length)];
+    const clientID = providerInstance.awareness.clientID;
+    const assignedColor = colors[clientID % colors.length];
+    const assignedNumber = (clientID % 99) + 1;
 
     providerInstance.awareness.setLocalStateField('user', {
       name: `Writer ${assignedNumber}`,
@@ -196,6 +197,16 @@ export function useDrafts() {
   const loadDrafts = useCallback(async (initialDraftId?: string | null) => {
     setIsSaving(true);
 
+    let urlDraftIdToUse = initialDraftId;
+    if (urlDraftIdToUse === undefined) {
+      const parts = window.location.pathname.split('/');
+      if (parts[1] === 'draft' && parts[2]) {
+        urlDraftIdToUse = decodeURIComponent(parts[2]);
+      } else {
+        urlDraftIdToUse = null;
+      }
+    }
+
     let dbConnected = false;
     try {
       const res = await fetch('/api/health');
@@ -225,6 +236,47 @@ export function useDrafts() {
             createdAt: Date.parse(d.createdAt) || Date.now(),
             updatedAt: Date.parse(d.updatedAt) || Date.now()
           }));
+
+          // Query IndexedDB local drafts to recover and sync local-only drafts
+          try {
+            const local = await getLocalDrafts();
+            const serverIds = new Set(loaded.map(d => d.id));
+            const localOnly = local.filter(d => d.id !== 'welcome-draft' && !serverIds.has(d.id));
+
+            if (localOnly.length > 0) {
+              console.log('Recovering and syncing local-only drafts:', localOnly);
+              for (const draft of localOnly) {
+                const formatted: Draft = {
+                  id: draft.id,
+                  title: draft.title,
+                  content: draft.content,
+                  scrapbook: draft.scrapbook,
+                  targetTemplate: draft.targetTemplate,
+                  syllableTolerance: draft.syllableTolerance ?? 1,
+                  audioCount: draft.audioCount || 0,
+                  createdAt: Date.parse(draft.createdAt) || Date.now(),
+                  updatedAt: draft.updatedAt ? Date.parse(draft.updatedAt) : Date.now()
+                };
+
+                try {
+                  const postRes = await fetch('/api/drafts', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(formatted)
+                  });
+                  if (postRes.ok) {
+                    console.log(`Synced local draft "${draft.title}" to server.`);
+                  }
+                } catch (postErr) {
+                  console.error(`Error uploading local draft "${draft.title}" to server:`, postErr);
+                }
+
+                loaded.push(formatted);
+              }
+            }
+          } catch (localErr) {
+            console.error('Error recovering local drafts:', localErr);
+          }
         } else {
           throw new Error('Failed to fetch drafts from server');
         }
@@ -285,13 +337,13 @@ export function useDrafts() {
     setDrafts(loaded);
 
     // Determine which draft to activate
-    // Priority: URL-provided ID > last active > first in list
-    if (initialDraftId && loaded.some(d => d.id === initialDraftId)) {
-      setActiveDraftId(initialDraftId);
-    } else if (initialDraftId && cloudActive) {
+    // Priority: URL-provided ID > null (empty/landing state)
+    if (urlDraftIdToUse && loaded.some(d => d.id === urlDraftIdToUse)) {
+      setActiveDraftId(urlDraftIdToUse);
+    } else if (urlDraftIdToUse && cloudActive) {
       // Try fetching a draft from server that's not in our list (shared link)
       try {
-        const res = await fetch(`/api/drafts/${initialDraftId}`);
+        const res = await fetch(`/api/drafts/${urlDraftIdToUse}`);
         if (res.ok) {
           const d = await res.json();
           const sharedDraft: Draft = {
@@ -312,26 +364,14 @@ export function useDrafts() {
           });
           setActiveDraftId(sharedDraft.id);
         } else {
-          // Draft not found — fall back to first
-          const savedActive = localStorage.getItem(ACTIVE_DRAFT_KEY);
-          if (savedActive && loaded.some(d => d.id === savedActive)) {
-            setActiveDraftId(savedActive);
-          } else {
-            setActiveDraftId(loaded[0]?.id || null);
-          }
+          setActiveDraftId(null);
         }
       } catch {
-        setActiveDraftId(loaded[0]?.id || null);
-      }
-    } else {
-      const savedActive = localStorage.getItem(ACTIVE_DRAFT_KEY);
-      if (savedActive && loaded.some(d => d.id === savedActive)) {
-        setActiveDraftId(savedActive);
-      } else if (loaded.length > 0) {
-        setActiveDraftId(loaded[0].id);
-      } else {
         setActiveDraftId(null);
       }
+    } else {
+      // Always return to empty state (null) unless a specific project link is called
+      setActiveDraftId(null);
     }
 
     setIsSaving(false);
@@ -383,8 +423,10 @@ export function useDrafts() {
     activeDraft?.audioCount,
   ]);
 
-  const selectDraft = useCallback((id: string) => {
-    if (drafts.some(d => d.id === id)) {
+  const selectDraft = useCallback((id: string | null) => {
+    if (id === null || id === '') {
+      setActiveDraftId(null);
+    } else if (drafts.some(d => d.id === id)) {
       setActiveDraftId(id);
     }
   }, [drafts]);

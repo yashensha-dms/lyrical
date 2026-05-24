@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { PanelRightClose, PanelRight, AlertCircle, RefreshCw } from 'lucide-react';
 import { ActivityBar } from './components/ActivityBar';
 import { Sidebar } from './components/Sidebar';
@@ -52,29 +52,23 @@ function App() {
   const [subconsciousActive, setSubconsciousActive] = useState(false);
 
   // ── URL ↔ Draft sync ──────────────────────────────────────────────────────
-  // Track whether we've performed the initial URL-to-draft selection
-  const initialUrlHandledRef = useRef(false);
-
-  // On first load: if URL has /draft/:id, select that draft once drafts are ready.
-  // This does NOT navigate (URL is already correct), just syncs state.
+  // Bidirectional sync between URL and activeDraftId
   useEffect(() => {
-    if (initialUrlHandledRef.current) return;
-    if (!urlDraftId) {
-      initialUrlHandledRef.current = true;
-      return;
-    }
-    if (drafts.length === 0) return; // wait for drafts to load
-
-    initialUrlHandledRef.current = true;
-    const found = drafts.find(d => d.id === urlDraftId);
-    if (found) {
-      // Just select — don't navigate (URL is already /draft/:id)
-      selectDraft(urlDraftId);
+    if (urlDraftId) {
+      if (activeDraft?.id !== urlDraftId) {
+        const found = drafts.find(d => d.id === urlDraftId);
+        if (found) {
+          selectDraft(urlDraftId);
+        } else if (drafts.length > 0) {
+          loadDrafts(urlDraftId);
+        }
+      }
     } else {
-      // Draft not in local list — try fetching from server
-      loadDrafts(urlDraftId);
+      if (activeDraft?.id !== null && activeDraft?.id !== undefined) {
+        selectDraft(null);
+      }
     }
-  }, [urlDraftId, drafts.length]);
+  }, [urlDraftId, drafts, activeDraft?.id, selectDraft, loadDrafts]);
 
   // Handle select draft: update state AND update URL
   const handleSelectDraft = (id: string) => {

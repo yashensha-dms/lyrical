@@ -35,7 +35,7 @@ connectDb();
 // ── WebSocket Server (Yjs Collaboration) ────────────────────────────────────
 import Y from 'yjs';
 // @ts-ignore
-import { setupWSConnection, setPersistence } from 'y-websocket/bin/utils';
+import { setupWSConnection, setPersistence, docs } from 'y-websocket/bin/utils';
 
 // Simple inline debounce to prevent types and external dependency issues
 function debounce<T extends (...args: any[]) => void>(func: T, wait: number): (...args: Parameters<T>) => void {
@@ -45,6 +45,49 @@ function debounce<T extends (...args: any[]) => void>(func: T, wait: number): (.
     timeout = setTimeout(() => func.apply(this, args), wait);
   };
 }
+
+interface CachedDraft {
+  title: string;
+  content: string;
+  scrapbook: string;
+  targetTemplate: string;
+  syllableTolerance: number;
+  updatedAt: Date;
+}
+const savingDocs = new Map<string, CachedDraft>();
+
+const getLatestDraftState = (id: string, mongoDoc: any) => {
+  // 1. Check if it's currently active in Yjs memory
+  if (docs && docs.has(id)) {
+    const ydoc = docs.get(id);
+    if (ydoc) {
+      return {
+        title: ydoc.getText('title').toString(),
+        content: ydoc.getText('content').toString(),
+        scrapbook: ydoc.getText('scrapbook').toString(),
+        targetTemplate: ydoc.getText('targetTemplate').toString(),
+        syllableTolerance: ydoc.getMap('settings').get('syllableTolerance') as number ?? 1,
+        updatedAt: new Date()
+      };
+    }
+  }
+
+  // 2. Check if it's in the process of saving
+  if (savingDocs.has(id)) {
+    const cached = savingDocs.get(id);
+    if (cached) return cached;
+  }
+
+  // 3. Otherwise return database document values
+  return {
+    title: mongoDoc?.title || '',
+    content: mongoDoc?.content || '',
+    scrapbook: mongoDoc?.scrapbook || '',
+    targetTemplate: mongoDoc?.targetTemplate || '',
+    syllableTolerance: mongoDoc?.syllableTolerance ?? 1,
+    updatedAt: mongoDoc?.updatedAt || new Date()
+  };
+};
 
 const wss = new WebSocketServer({ noServer: true });
 
@@ -104,23 +147,39 @@ setPersistence({
   },
   writeState: async (docName: string, ydoc: Y.Doc) => {
     try {
-      const titleText = ydoc.getText('title');
-      const contentText = ydoc.getText('content');
-      const scrapbookText = ydoc.getText('scrapbook');
-      const templateText = ydoc.getText('targetTemplate');
-      const settingsMap = ydoc.getMap('settings');
+      const title = ydoc.getText('title').toString();
+      const content = ydoc.getText('content').toString();
+      const scrapbook = ydoc.getText('scrapbook').toString();
+      const targetTemplate = ydoc.getText('targetTemplate').toString();
+      const syllableTolerance = ydoc.getMap('settings').get('syllableTolerance') as number ?? 1;
+      const updatedAt = new Date();
+
+      // Put in cache to prevent race condition during page reload/disconnect
+      savingDocs.set(docName, {
+        title,
+        content,
+        scrapbook,
+        targetTemplate,
+        syllableTolerance,
+        updatedAt
+      });
 
       await DraftModel.findByIdAndUpdate(docName, {
-        title: titleText.toString(),
-        content: contentText.toString(),
-        scrapbook: scrapbookText.toString(),
-        targetTemplate: templateText.toString(),
-        syllableTolerance: settingsMap.get('syllableTolerance') ?? 1,
-        updatedAt: new Date()
+        title,
+        content,
+        scrapbook,
+        targetTemplate,
+        syllableTolerance,
+        updatedAt
       });
       console.log(`Final saved collaborative draft ${docName} to MongoDB.`);
     } catch (err) {
       console.error(`Failed to final save collaborative draft ${docName}:`, err);
+    } finally {
+      // Keep it in savingDocs for a small buffer (e.g. 3 seconds) to ensure database writes are fully propagation-committed
+      setTimeout(() => {
+        savingDocs.delete(docName);
+      }, 3000);
     }
   }
 });
@@ -182,17 +241,20 @@ app.get('/api/drafts', requireDb, async (req, res) => {
     ]);
     const countMap = new Map(audioCounts.map(a => [a._id, a.count]));
 
-    const response = drafts.map(d => ({
-      id: d._id,
-      title: d.title,
-      content: d.content,
-      scrapbook: d.scrapbook,
-      targetTemplate: d.targetTemplate,
-      syllableTolerance: d.syllableTolerance ?? 1,
-      audioCount: countMap.get(d._id) || 0,
-      createdAt: d.createdAt.toISOString(),
-      updatedAt: d.updatedAt.toISOString(),
-    }));
+    const response = drafts.map(d => {
+      const latest = getLatestDraftState(d._id, d);
+      return {
+        id: d._id,
+        title: latest.title,
+        content: latest.content,
+        scrapbook: latest.scrapbook,
+        targetTemplate: latest.targetTemplate,
+        syllableTolerance: latest.syllableTolerance,
+        audioCount: countMap.get(d._id) || 0,
+        createdAt: d.createdAt.toISOString(),
+        updatedAt: latest.updatedAt instanceof Date ? latest.updatedAt.toISOString() : new Date(latest.updatedAt).toISOString(),
+      };
+    });
 
     res.json(response);
   } catch (error: any) {
@@ -206,19 +268,34 @@ app.get('/api/drafts/:id', requireDb, async (req, res) => {
   try {
     const draft = await DraftModel.findById(id);
     if (!draft) {
+      if (docs && (docs.has(id) || savingDocs.has(id))) {
+        const latest = getLatestDraftState(id, null);
+        return res.json({
+          id,
+          title: latest.title,
+          content: latest.content,
+          scrapbook: latest.scrapbook,
+          targetTemplate: latest.targetTemplate,
+          syllableTolerance: latest.syllableTolerance,
+          audioCount: 0,
+          createdAt: new Date().toISOString(),
+          updatedAt: latest.updatedAt instanceof Date ? latest.updatedAt.toISOString() : new Date(latest.updatedAt).toISOString(),
+        });
+      }
       return res.status(404).json({ error: 'Draft not found' });
     }
+    const latest = getLatestDraftState(id, draft);
     const audioCount = await AudioMemoModel.countDocuments({ draftId: id });
     res.json({
       id: draft._id,
-      title: draft.title,
-      content: draft.content,
-      scrapbook: draft.scrapbook,
-      targetTemplate: draft.targetTemplate,
-      syllableTolerance: draft.syllableTolerance ?? 1,
+      title: latest.title,
+      content: latest.content,
+      scrapbook: latest.scrapbook,
+      targetTemplate: latest.targetTemplate,
+      syllableTolerance: latest.syllableTolerance,
       audioCount,
       createdAt: draft.createdAt.toISOString(),
-      updatedAt: draft.updatedAt.toISOString(),
+      updatedAt: latest.updatedAt instanceof Date ? latest.updatedAt.toISOString() : new Date(latest.updatedAt).toISOString(),
     });
   } catch (error: any) {
     res.status(500).json({ error: error.message });

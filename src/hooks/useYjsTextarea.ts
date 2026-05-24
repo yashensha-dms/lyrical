@@ -38,6 +38,8 @@ export function useYjsTextarea(
         return;
       }
 
+      if (!event.changes || !event.changes.delta) return;
+
       // Remote change: calculate caret position shift
       const newValue = yText.toString();
       const { selectionStart, selectionEnd } = textarea;

@@ -144,6 +144,63 @@ export const Notepad: React.FC<NotepadProps> = ({
     };
   }, [provider]);
 
+  // Shift collaborator cursors locally when Yjs document updates
+  useEffect(() => {
+    const yText = yDoc?.getText('content');
+    if (!yText) return;
+
+    const handleYTextChange = (event: Y.YTextEvent) => {
+      if (!event.changes || !event.changes.delta) return;
+
+      setCollaborators(prev => {
+        if (prev.length === 0) return prev;
+
+        return prev.map(collab => {
+          if (!collab.cursor) return collab;
+          let newAnchor = collab.cursor.anchor;
+          let newHead = collab.cursor.head;
+          let index = 0;
+
+          event.changes.delta.forEach(change => {
+            if (change.retain) {
+              index += change.retain;
+            } else if (change.insert) {
+              const len = typeof change.insert === 'string' ? change.insert.length : 1;
+              if (index < newAnchor) {
+                newAnchor += len;
+              }
+              if (index < newHead) {
+                newHead += len;
+              }
+              index += len;
+            } else if (change.delete) {
+              const len = change.delete;
+              if (index < newAnchor) {
+                newAnchor -= Math.min(len, newAnchor - index);
+              }
+              if (index < newHead) {
+                newHead -= Math.min(len, newHead - index);
+              }
+            }
+          });
+
+          return {
+            ...collab,
+            cursor: {
+              anchor: newAnchor,
+              head: newHead
+            }
+          };
+        });
+      });
+    };
+
+    yText.observe(handleYTextChange);
+    return () => {
+      yText.unobserve(handleYTextChange);
+    };
+  }, [yDoc]);
+
   // Compute and update caret coordinate offsets
   const updateCursorCoordinates = useCallback(() => {
     const textarea = textareaRef.current;
