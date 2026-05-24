@@ -19,6 +19,8 @@ function App() {
     healthStatus,
     useLocalMode,
     isCloudMode,
+    yDoc,
+    provider,
     setIsEditorFocused,
     syncActiveDraftWithRemote,
     setUseLocalMode,
@@ -110,7 +112,8 @@ function App() {
         healthStatus={healthStatus}
         useLocalMode={useLocalMode}
         isCloudMode={isCloudMode}
-        remoteDraft={null}
+        yDoc={yDoc}
+        provider={provider}
         selectDraft={handleSelectDraft}
         createDraft={handleCreateDraft}
         updateActiveDraft={updateActiveDraft}
@@ -251,6 +254,8 @@ function App() {
               importDrafts={importDrafts}
               setIsSidebarOpen={setIsSidebarOpen}
               isCloudMode={isCloudMode}
+              yDoc={yDoc}
+              provider={provider}
             />
           </div>
         )}
@@ -270,6 +275,8 @@ function App() {
           syncActiveDraftWithRemote={syncActiveDraftWithRemote}
           isCloudMode={isCloudMode}
           onSubconsciousActiveChange={setSubconsciousActive}
+          yDoc={yDoc}
+          provider={provider}
         />
 
         {/* 4. Right Panel */}

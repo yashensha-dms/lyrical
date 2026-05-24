@@ -32,75 +32,119 @@ const connectDb = async () => {
 
 connectDb();
 
-// ── WebSocket Server ────────────────────────────────────────────────────────
-// Rooms: Map<draftId, Set<{ws, clientId}>>
-interface RoomClient {
-  ws: WebSocket;
-  clientId: string;
+// ── WebSocket Server (Yjs Collaboration) ────────────────────────────────────
+import Y from 'yjs';
+// @ts-ignore
+import { setupWSConnection, setPersistence } from 'y-websocket/bin/utils';
+
+// Simple inline debounce to prevent types and external dependency issues
+function debounce<T extends (...args: any[]) => void>(func: T, wait: number): (...args: Parameters<T>) => void {
+  let timeout: ReturnType<typeof setTimeout> | null = null;
+  return function(this: any, ...args: Parameters<T>) {
+    if (timeout) clearTimeout(timeout);
+    timeout = setTimeout(() => func.apply(this, args), wait);
+  };
 }
 
-const rooms = new Map<string, Set<RoomClient>>();
+const wss = new WebSocketServer({ noServer: true });
 
-const httpServer = http.createServer(app);
-const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
-
-wss.on('connection', (ws) => {
-  let currentRoom: string | null = null;
-  let currentClientId: string | null = null;
-
-  ws.on('message', (raw) => {
-    let msg: any;
+// Setup Yjs MongoDB persistence
+setPersistence({
+  bindState: async (docName: string, ydoc: Y.Doc) => {
     try {
-      msg = JSON.parse(raw.toString());
-    } catch {
-      return;
+      const draft = await DraftModel.findById(docName);
+      if (draft) {
+        // Initialize Yjs shared types with values from MongoDB if empty
+        const titleText = ydoc.getText('title');
+        const contentText = ydoc.getText('content');
+        const scrapbookText = ydoc.getText('scrapbook');
+        const templateText = ydoc.getText('targetTemplate');
+        const settingsMap = ydoc.getMap('settings');
+
+        ydoc.transact(() => {
+          if (titleText.length === 0 && draft.title) titleText.insert(0, draft.title);
+          if (contentText.length === 0 && draft.content) contentText.insert(0, draft.content);
+          if (scrapbookText.length === 0 && draft.scrapbook) scrapbookText.insert(0, draft.scrapbook);
+          if (templateText.length === 0 && draft.targetTemplate) templateText.insert(0, draft.targetTemplate);
+          if (settingsMap.get('syllableTolerance') === undefined) {
+            settingsMap.set('syllableTolerance', draft.syllableTolerance ?? 1);
+          }
+        });
+      }
+    } catch (err) {
+      console.error(`Error loading draft ${docName} for Yjs persistence:`, err);
     }
 
-    if (msg.type === 'join') {
-      // Leave existing room if any
-      if (currentRoom) {
-        const room = rooms.get(currentRoom);
-        if (room) {
-          room.forEach((c) => { if (c.clientId === currentClientId) room.delete(c); });
-          if (room.size === 0) rooms.delete(currentRoom);
-        }
+    const titleText = ydoc.getText('title');
+    const contentText = ydoc.getText('content');
+    const scrapbookText = ydoc.getText('scrapbook');
+    const templateText = ydoc.getText('targetTemplate');
+    const settingsMap = ydoc.getMap('settings');
+
+    // Debounced save back to MongoDB
+    const saveToDb = debounce(async () => {
+      try {
+        await DraftModel.findByIdAndUpdate(docName, {
+          title: titleText.toString(),
+          content: contentText.toString(),
+          scrapbook: scrapbookText.toString(),
+          targetTemplate: templateText.toString(),
+          syllableTolerance: settingsMap.get('syllableTolerance') ?? 1,
+          updatedAt: new Date()
+        });
+        console.log(`Auto-saved collaborative draft ${docName} to MongoDB.`);
+      } catch (err) {
+        console.error(`Failed to auto-save collaborative draft ${docName}:`, err);
       }
+    }, 2000);
 
-      currentRoom = msg.draftId;
-      currentClientId = msg.clientId;
+    ydoc.on('update', () => {
+      saveToDb();
+    });
+  },
+  writeState: async (docName: string, ydoc: Y.Doc) => {
+    try {
+      const titleText = ydoc.getText('title');
+      const contentText = ydoc.getText('content');
+      const scrapbookText = ydoc.getText('scrapbook');
+      const templateText = ydoc.getText('targetTemplate');
+      const settingsMap = ydoc.getMap('settings');
 
-      if (!rooms.has(currentRoom)) {
-        rooms.set(currentRoom, new Set());
-      }
-      rooms.get(currentRoom)!.add({ ws, clientId: currentClientId! });
-
-    } else if (msg.type === 'update') {
-      // Relay to all OTHER clients in the same room
-      if (!currentRoom) return;
-      const room = rooms.get(currentRoom);
-      if (!room) return;
-
-      const payload = JSON.stringify(msg);
-      room.forEach((client) => {
-        if (client.clientId !== currentClientId && client.ws.readyState === WebSocket.OPEN) {
-          client.ws.send(payload);
-        }
+      await DraftModel.findByIdAndUpdate(docName, {
+        title: titleText.toString(),
+        content: contentText.toString(),
+        scrapbook: scrapbookText.toString(),
+        targetTemplate: templateText.toString(),
+        syllableTolerance: settingsMap.get('syllableTolerance') ?? 1,
+        updatedAt: new Date()
       });
+      console.log(`Final saved collaborative draft ${docName} to MongoDB.`);
+    } catch (err) {
+      console.error(`Failed to final save collaborative draft ${docName}:`, err);
     }
-  });
-
-  ws.on('close', () => {
-    if (currentRoom) {
-      const room = rooms.get(currentRoom);
-      if (room) {
-        room.forEach((c) => { if (c.clientId === currentClientId) room.delete(c); });
-        if (room.size === 0) rooms.delete(currentRoom);
-      }
-    }
-  });
+  }
 });
 
-console.log(`WebSocket server attached at /ws`);
+const httpServer = http.createServer(app);
+
+httpServer.on('upgrade', (request, socket, head) => {
+  const url = request.url || '';
+  if (url.startsWith('/ws/')) {
+    wss.handleUpgrade(request, socket, head, (ws) => {
+      wss.emit('connection', ws, request);
+    });
+  } else {
+    socket.destroy();
+  }
+});
+
+wss.on('connection', (ws: any, req: any) => {
+  const url = req.url || '';
+  const draftId = url.slice(4).split('?')[0]; // strip "/ws/" prefix
+  setupWSConnection(ws, req, { docName: draftId });
+});
+
+console.log(`WebSocket server attached at /ws/:draftId`);
 
 // ── REST API ────────────────────────────────────────────────────────────────
 

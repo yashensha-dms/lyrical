@@ -101,6 +101,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({
             placeholder="Search a word…"
             value={manualQuery}
             onChange={(e) => setManualQuery(e.target.value)}
+            spellCheck="false"
             className="w-full bg-paper border border-paper-darker rounded-lg pl-3 pr-9 py-2 text-xs text-ink placeholder-ink-light focus:outline-none focus:border-terracotta/60 focus:ring-1 focus:ring-terracotta/20 transition-all duration-150 shadow-paper-sm cursor-text"
             style={{ fontSize: isMobile ? '16px' : undefined }}
           />

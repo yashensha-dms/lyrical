@@ -54,6 +54,13 @@ textarea:focus-visible,
   user-select: none !important;
 }
 
+/* Ensure selected text is visible even if the textarea text color is transparent */
+textarea::selection {
+  background: rgba(192, 105, 78, 0.25) !important;
+  color: var(--color-ink, #2C2A29) !important;
+  -webkit-text-fill-color: var(--color-ink, #2C2A29) !important;
+}
+
 /* Subtle ruled-paper writing surface */
 .paper-lines {
   background-image: linear-gradient(

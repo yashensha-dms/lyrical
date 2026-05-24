@@ -1,8 +1,13 @@
 import React, { useRef, useEffect } from 'react';
+import * as Y from 'yjs';
+import { WebsocketProvider } from 'y-websocket';
+import { useYjsTextarea } from '../hooks/useYjsTextarea';
 
 interface HighlightingTextareaProps {
   value: string;
   onChange: (value: string) => void;
+  yText?: Y.Text;
+  provider?: WebsocketProvider | null;
   placeholder?: string;
   className?: string;
   style?: React.CSSProperties;
@@ -27,6 +32,8 @@ function isBackupLine(line: string): boolean {
 export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, HighlightingTextareaProps>(({
   value,
   onChange,
+  yText,
+  provider,
   placeholder,
   className,
   style,
@@ -45,6 +52,9 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
   const overlayRef = useRef<HTMLDivElement>(null);
 
   React.useImperativeHandle(ref, () => textareaRef.current!);
+
+  const yjsBinding = useYjsTextarea(yText, provider || null, textareaRef);
+  const textareaOnChange = yText ? yjsBinding.onChange : (e: React.ChangeEvent<HTMLTextAreaElement>) => onChange(e.target.value);
 
   const syncScroll = () => {
     if (textareaRef.current && overlayRef.current) {
@@ -67,8 +77,8 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
   /**
    * Renders the overlay content.
    * - In subconscious mode: invisible blur mask
-   * - Otherwise: lines starting with `>` get backup-idea styling (visible tinted text
-   *   so the overlay colors the text while the textarea text is transparent/invisible)
+   * - Otherwise: lines starting with `>` get backup-idea styling (visible tinted text)
+   *   and normal lines are colored in var(--color-ink, #2C2A29)
    */
   const renderOverlay = () => {
     if (subconsciousActive) {
@@ -92,7 +102,7 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
               borderLeft: '2px solid rgba(192, 105, 78, 0.35)',
               paddingLeft: '8px',
               marginLeft: '-10px',
-              color: 'rgba(122, 115, 106, 0.55)',    // ink-muted, semi-transparent
+              color: 'var(--color-ink-muted, #7A736A)',
               fontStyle: 'italic',
             }}
           >
@@ -100,9 +110,9 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
           </span>
         );
       } else {
-        // Normal lines: transparent (textarea shows through)
+        // Normal lines: visible ink color
         nodes.push(
-          <span key={idx} style={{ display: 'block', color: 'transparent' }}>
+          <span key={idx} style={{ display: 'block', color: 'var(--color-ink, #2C2A29)' }}>
             {line || ' '}
           </span>
         );
@@ -143,11 +153,12 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
         {renderOverlay()}
       </div>
 
-      {/* Actual textarea — sits on top, with transparent color so overlay shows through for backup lines */}
+      {/* Actual textarea — sits on top, with transparent color so overlay shows through */}
       <textarea
         ref={textareaRef}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
+        value={yText ? undefined : value}
+        defaultValue={yText ? yText.toString() : undefined}
+        onChange={textareaOnChange}
         onFocus={onFocus}
         onBlur={onBlur}
         onScroll={handleScroll}
@@ -156,6 +167,7 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
         onKeyUp={onKeyUp}
         onSelect={onSelect}
         placeholder={placeholder}
+        spellCheck="false"
         className={`w-full h-full bg-transparent font-serif leading-[32px] resize-none focus:outline-none whitespace-pre-wrap break-words overflow-x-hidden overflow-y-auto block border-0 relative z-10 ${
           isMobile ? 'py-4 px-4 text-[15px]' : 'py-6 px-8 text-[17px]'
         } ${
@@ -166,10 +178,8 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
           fontFeatureSettings: '"kern" 1, "liga" 1',
           maxWidth: '100%',
           background: 'transparent',
-          // Use mixed coloring per line via overlay; textarea text is visible for normal lines,
-          // transparent for backup lines (overlay provides the muted italic look)
-          color: subconsciousActive ? 'transparent' : undefined,
-          WebkitTextFillColor: subconsciousActive ? 'transparent' : undefined,
+          color: 'transparent',
+          WebkitTextFillColor: 'transparent',
           ...style,
         }}
       />

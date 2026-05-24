@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import * as Y from 'yjs';
+import { WebsocketProvider } from 'y-websocket';
 import { getLocalDrafts, saveLocalDraft, deleteLocalDraft, getLocalAudios, getLocalAudioCount } from '../utils/indexedDb';
 
 export interface Draft {
@@ -15,8 +17,7 @@ export interface Draft {
 
 const ACTIVE_DRAFT_KEY = 'lyrical_active_draft_id_v2';
 
-// Generate a stable client ID for this browser session
-const CLIENT_ID = `client-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
 
 const DEFAULT_DRAFTS: Draft[] = [
   {
@@ -58,14 +59,15 @@ export function useDrafts() {
 
   const draftsRef = useRef(drafts);
   const isEditorFocusedRef = useRef(false);
-  const wsRef = useRef<WebSocket | null>(null);
+  const [yDoc, setYDoc] = useState<Y.Doc | null>(null);
+  const [provider, setProvider] = useState<WebsocketProvider | null>(null);
   const wsRoomRef = useRef<string | null>(null);
 
   useEffect(() => {
     draftsRef.current = drafts;
   }, [drafts]);
 
-  const isCloudMode = healthStatus === 'connected' && !useLocalMode;
+  const isCloudMode = !useLocalMode;
   const isCloudModeRef = useRef(isCloudMode);
   useEffect(() => { isCloudModeRef.current = isCloudMode; }, [isCloudMode]);
 
@@ -78,109 +80,84 @@ export function useDrafts() {
     isEditorFocusedRef.current = v;
   }, []);
 
-  // ── WebSocket ──────────────────────────────────────────────────────────────
-  const intentionalCloseRef = useRef(false);
+  // ── Yjs Collaboration ──────────────────────────────────────────────────────
+  const disconnectWs = useCallback(() => {
+    setProvider(prev => {
+      if (prev) prev.destroy();
+      return null;
+    });
+    setYDoc(prev => {
+      if (prev) prev.destroy();
+      return null;
+    });
+    wsRoomRef.current = null;
+  }, []);
 
   const connectWs = useCallback((draftId: string) => {
     // Already connected to this exact room — do nothing
     if (
-      wsRef.current &&
-      wsRef.current.readyState === WebSocket.OPEN &&
       wsRoomRef.current === draftId
     ) {
       return;
     }
 
-    // Close previous connection intentionally
-    if (wsRef.current) {
-      intentionalCloseRef.current = true;
-      wsRef.current.close();
-      wsRef.current = null;
-    }
+    // Close previous connection
+    disconnectWs();
 
-    intentionalCloseRef.current = false;
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${protocol}//${window.location.host}/ws`;
-    const ws = new WebSocket(wsUrl);
-    wsRef.current = ws;
+    
+    const ydoc = new Y.Doc();
+    setYDoc(ydoc);
+
+    const providerInstance = new WebsocketProvider(wsUrl, draftId, ydoc);
+    setProvider(providerInstance);
     wsRoomRef.current = draftId;
 
-    ws.onopen = () => {
-      ws.send(JSON.stringify({ type: 'join', draftId, clientId: CLIENT_ID }));
+    providerInstance.on('status', (event: any) => {
+      setHealthStatus(event.status === 'connected' ? 'connected' : 'disconnected');
+    });
+
+    const titleText = ydoc.getText('title');
+    const contentText = ydoc.getText('content');
+    const scrapbookText = ydoc.getText('scrapbook');
+    const templateText = ydoc.getText('targetTemplate');
+    const settingsMap = ydoc.getMap('settings');
+
+    const assignedNumber = Math.floor(Math.random() * 99) + 1;
+    const colors = ['#E25C3D', '#2D7A56', '#7C4DB8', '#D97706', '#2563EB', '#DB2777', '#059669', '#78716C'];
+    const assignedColor = colors[Math.floor(Math.random() * colors.length)];
+
+    providerInstance.awareness.setLocalStateField('user', {
+      name: `Writer ${assignedNumber}`,
+      color: assignedColor
+    });
+
+    // Bidirectional sync handler from Yjs to React state
+    const syncYjsToReact = () => {
+      setDrafts(prev =>
+        prev.map(d => {
+          if (d.id !== draftId) return d;
+          return {
+            ...d,
+            title: titleText.toString(),
+            content: contentText.toString(),
+            scrapbook: scrapbookText.toString(),
+            targetTemplate: templateText.toString(),
+            syllableTolerance: settingsMap.get('syllableTolerance') as number ?? 1,
+            updatedAt: Date.now()
+          };
+        })
+      );
     };
 
-    ws.onmessage = (event) => {
-      try {
-        const msg = JSON.parse(event.data);
-        if (msg.type === 'update' && msg.draftId === wsRoomRef.current) {
-          setDrafts(prev =>
-            prev.map(d => {
-              if (d.id !== msg.draftId) return d;
-              return {
-                ...d,
-                ...(msg.title !== undefined && { title: msg.title }),
-                ...(msg.content !== undefined && { content: msg.content }),
-                ...(msg.scrapbook !== undefined && { scrapbook: msg.scrapbook }),
-                ...(msg.targetTemplate !== undefined && { targetTemplate: msg.targetTemplate }),
-                ...(msg.syllableTolerance !== undefined && { syllableTolerance: msg.syllableTolerance }),
-                updatedAt: msg.updatedAt ?? Date.now(),
-              };
-            })
-          );
-        }
-      } catch (e) {
-        console.error('WS message parse error:', e);
-      }
-    };
+    ydoc.on('update', syncYjsToReact);
 
-    ws.onclose = () => {
-      // Only auto-reconnect if this was NOT an intentional close
-      if (!intentionalCloseRef.current && isCloudModeRef.current && wsRoomRef.current) {
-        const roomToReconnect = wsRoomRef.current;
-        setTimeout(() => {
-          // Double-check we still want to be connected
-          if (isCloudModeRef.current && wsRoomRef.current === roomToReconnect) {
-            connectWs(roomToReconnect);
-          }
-        }, 3000);
-      }
-    };
+  }, [disconnectWs]);
 
-    ws.onerror = () => {
-      // Error will be followed by onclose; no extra action needed
-    };
-  }, []);
-
-  const disconnectWs = useCallback(() => {
-    if (wsRef.current) {
-      intentionalCloseRef.current = true;
-      wsRef.current.close();
-      wsRef.current = null;
-      wsRoomRef.current = null;
-    }
-  }, []);
-
-  // Broadcast local change to collaborators
-  const broadcastUpdate = useCallback((draft: Draft) => {
-    const ws = wsRef.current;
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({
-        type: 'update',
-        draftId: draft.id,
-        clientId: CLIENT_ID,
-        title: draft.title,
-        content: draft.content,
-        scrapbook: draft.scrapbook,
-        targetTemplate: draft.targetTemplate,
-        syllableTolerance: draft.syllableTolerance,
-        updatedAt: draft.updatedAt,
-      }));
-    }
-  }, []);
-
-  // Connect/disconnect WS when cloud mode or active draft changes
+  // Connect/disconnect WS when local mode setting or active draft changes
   useEffect(() => {
-    if (isCloudMode && activeDraftId) {
+    if (!useLocalMode && activeDraftId) {
       connectWs(activeDraftId);
     } else {
       disconnectWs();
@@ -189,7 +166,7 @@ export function useDrafts() {
     return () => {
       // Don't disconnect on every re-render, only when truly unmounting
     };
-  }, [isCloudMode, activeDraftId, connectWs, disconnectWs]);
+  }, [useLocalMode, activeDraftId, connectWs, disconnectWs]);
 
   // Cleanup WS on unmount
   useEffect(() => {
@@ -385,41 +362,16 @@ export function useDrafts() {
     setIsSaving(true);
     const draft = { ...activeDraft, updatedAt: Date.now() };
 
-    // Broadcast immediately over WS (real-time feel)
-    broadcastUpdate(draft);
-
     const timer = setTimeout(async () => {
-      if (isCloudModeRef.current) {
-        try {
-          const res = await fetch(`/api/drafts/${draft.id}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              title: draft.title,
-              content: draft.content,
-              scrapbook: draft.scrapbook,
-              targetTemplate: draft.targetTemplate,
-              syllableTolerance: draft.syllableTolerance ?? 1
-            })
-          });
-          if (!res.ok) throw new Error('Cloud save failed');
-        } catch (e) {
-          console.error('Failed to save to cloud, writing locally', e);
-          await saveLocalDraft({
-            ...draft,
-            createdAt: new Date(draft.createdAt).toISOString(),
-            updatedAt: new Date(draft.updatedAt).toISOString()
-          });
-        }
-      } else {
-        await saveLocalDraft({
-          ...draft,
-          createdAt: new Date(draft.createdAt).toISOString(),
-          updatedAt: new Date(draft.updatedAt).toISOString()
-        });
-      }
+      // Save locally as backup. In cloud mode, Yjs server auto-saves to MongoDB.
+      // In local mode, this is our main save route.
+      await saveLocalDraft({
+        ...draft,
+        createdAt: new Date(draft.createdAt).toISOString(),
+        updatedAt: new Date(draft.updatedAt).toISOString()
+      });
       setIsSaving(false);
-    }, 600);
+    }, 1000);
 
     return () => clearTimeout(timer);
   }, [
@@ -429,7 +381,6 @@ export function useDrafts() {
     activeDraft?.targetTemplate,
     activeDraft?.syllableTolerance,
     activeDraft?.audioCount,
-    broadcastUpdate,
   ]);
 
   const selectDraft = useCallback((id: string) => {
@@ -483,14 +434,55 @@ export function useDrafts() {
 
   const updateActiveDraft = useCallback((updates: Partial<Omit<Draft, 'id' | 'createdAt'>>) => {
     if (!activeDraftId) return;
-    setDrafts(prev =>
-      prev.map(d =>
-        d.id === activeDraftId
-          ? { ...d, ...updates, updatedAt: Date.now() }
-          : d
-      )
-    );
-  }, [activeDraftId]);
+
+    if (isCloudModeRef.current && yDoc) {
+      const ydoc = yDoc;
+      ydoc.transact(() => {
+        if (updates.title !== undefined) {
+          const titleText = ydoc.getText('title');
+          if (titleText.toString() !== updates.title) {
+            titleText.delete(0, titleText.length);
+            titleText.insert(0, updates.title);
+          }
+        }
+        if (updates.content !== undefined) {
+          const contentText = ydoc.getText('content');
+          if (contentText.toString() !== updates.content) {
+            contentText.delete(0, contentText.length);
+            contentText.insert(0, updates.content);
+          }
+        }
+        if (updates.scrapbook !== undefined) {
+          const scrapbookText = ydoc.getText('scrapbook');
+          if (scrapbookText.toString() !== updates.scrapbook) {
+            scrapbookText.delete(0, scrapbookText.length);
+            scrapbookText.insert(0, updates.scrapbook);
+          }
+        }
+        if (updates.targetTemplate !== undefined) {
+          const templateText = ydoc.getText('targetTemplate');
+          if (templateText.toString() !== updates.targetTemplate) {
+            templateText.delete(0, templateText.length);
+            templateText.insert(0, updates.targetTemplate);
+          }
+        }
+        if (updates.syllableTolerance !== undefined) {
+          const settingsMap = ydoc.getMap('settings');
+          if (settingsMap.get('syllableTolerance') !== updates.syllableTolerance) {
+            settingsMap.set('syllableTolerance', updates.syllableTolerance);
+          }
+        }
+      }, 'local-react-update');
+    } else {
+      setDrafts(prev =>
+        prev.map(d =>
+          d.id === activeDraftId
+            ? { ...d, ...updates, updatedAt: Date.now() }
+            : d
+        )
+      );
+    }
+  }, [activeDraftId, yDoc]);
 
   const deleteDraft = useCallback(async (id: string) => {
     setDrafts(prev => prev.filter(d => d.id !== id));
@@ -652,7 +644,8 @@ export function useDrafts() {
     healthStatus,
     useLocalMode,
     isCloudMode,
-    remoteDraft: null,         // No longer used — WS handles live sync
+    yDoc,
+    provider,
     isEditorFocused: false,
     setIsEditorFocused,
     syncActiveDraftWithRemote,

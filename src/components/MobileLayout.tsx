@@ -4,6 +4,8 @@ import { Sidebar } from './Sidebar';
 import { Notepad } from './Notepad';
 import { RightPanel } from './RightPanel';
 import type { Draft } from '../hooks/useDrafts';
+import * as Y from 'yjs';
+import { WebsocketProvider } from 'y-websocket';
 
 type MobileTab = 'write' | 'library' | 'tools';
 
@@ -14,7 +16,8 @@ interface MobileLayoutProps {
   healthStatus: 'checking' | 'connected' | 'disconnected';
   useLocalMode: boolean;
   isCloudMode: boolean;
-  remoteDraft: Draft | null;
+  yDoc?: Y.Doc | null;
+  provider?: WebsocketProvider | null;
   // Actions
   selectDraft: (id: string) => void;
   createDraft: (title?: string) => Promise<Draft>;
@@ -36,7 +39,8 @@ export const MobileLayout: React.FC<MobileLayoutProps> = ({
   healthStatus,
   useLocalMode,
   isCloudMode,
-  remoteDraft,
+  yDoc,
+  provider,
   selectDraft,
   createDraft,
   updateActiveDraft,
@@ -183,7 +187,8 @@ export const MobileLayout: React.FC<MobileLayoutProps> = ({
                 updateActiveDraft={updateActiveDraft}
                 setSelectedWord={setSelectedWord}
                 onRegisterReplace={setReplaceWordFn}
-                remoteDraft={remoteDraft}
+                yDoc={yDoc}
+                provider={provider}
                 setIsEditorFocused={setIsEditorFocused}
                 syncActiveDraftWithRemote={syncActiveDraftWithRemote}
                 isCloudMode={isCloudMode}
@@ -229,6 +234,8 @@ export const MobileLayout: React.FC<MobileLayoutProps> = ({
               setIsSidebarOpen={() => {}} // no-op on mobile
               isCloudMode={isCloudMode}
               isMobile={true}
+              yDoc={yDoc}
+              provider={provider}
             />
           </div>
         )}

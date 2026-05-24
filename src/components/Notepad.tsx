@@ -3,6 +3,66 @@ import { AlertCircle, Brain, Timer, ChevronDown, X, Share2, Check } from 'lucide
 import { countLineSyllables } from '../utils/syllables';
 import type { Draft } from '../hooks/useDrafts';
 import { HighlightingTextarea } from './HighlightingTextarea';
+import * as Y from 'yjs';
+import { WebsocketProvider } from 'y-websocket';
+
+// Text caret coordinate mirroring helper
+function getTextCaretCoordinates(textarea: HTMLTextAreaElement, index: number): { top: number; left: number } {
+  const { scrollLeft, scrollTop } = textarea;
+  const style = window.getComputedStyle(textarea);
+
+  const div = document.createElement('div');
+  document.body.appendChild(div);
+
+  const copyProperties = [
+    'direction',
+    'boxSizing',
+    'width',
+    'height',
+    'overflowX',
+    'overflowY',
+    'borderStyle',
+    'borderWidth',
+    'paddingTop',
+    'paddingRight',
+    'paddingBottom',
+    'paddingLeft',
+    'fontFamily',
+    'fontSize',
+    'fontWeight',
+    'fontStyle',
+    'lineHeight',
+    'textTransform',
+    'wordBreak',
+    'whiteSpace',
+  ];
+
+  copyProperties.forEach(prop => {
+    // @ts-ignore
+    div.style[prop] = style[prop];
+  });
+
+  div.style.position = 'absolute';
+  div.style.visibility = 'hidden';
+  div.style.whiteSpace = 'pre-wrap';
+  div.style.wordWrap = 'break-word';
+
+  const text = textarea.value.substring(0, index);
+  div.textContent = text;
+
+  const span = document.createElement('span');
+  span.textContent = textarea.value.substring(index, index + 1) || '.';
+  div.appendChild(span);
+
+  const caretCoordinates = {
+    top: span.offsetTop + textarea.offsetTop - scrollTop,
+    left: span.offsetLeft + textarea.offsetLeft - scrollLeft
+  };
+
+  document.body.removeChild(div);
+
+  return caretCoordinates;
+}
 
 interface NotepadProps {
   draftId: string;
@@ -20,6 +80,8 @@ interface NotepadProps {
   onSubconsciousActiveChange?: (active: boolean) => void;
   isMobile?: boolean;
   simplicityAlerts?: { word: string; index: number }[];
+  yDoc?: Y.Doc | null;
+  provider?: WebsocketProvider | null;
 }
 
 export const Notepad: React.FC<NotepadProps> = ({
@@ -37,10 +99,95 @@ export const Notepad: React.FC<NotepadProps> = ({
   isCloudMode,
   onSubconsciousActiveChange,
   isMobile = false,
+  yDoc,
+  provider,
 }) => {
   const gutterRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const lastSelectionRef = useRef<{ start: number; end: number } | null>(null);
+
+  // Collaborative Awareness States
+  const [collaborators, setCollaborators] = useState<any[]>([]);
+  const [cursorCoords, setCursorCoords] = useState<{
+    [clientID: number]: { top: number; left: number; name: string; color: string }
+  }>({});
+
+  // Sync awareness states from provider
+  useEffect(() => {
+    if (!provider) {
+      setCollaborators([]);
+      return;
+    }
+
+    const handleAwarenessChange = () => {
+      const states = provider.awareness.getStates();
+      const currentClientId = provider.awareness.clientID;
+      const list: any[] = [];
+      states.forEach((state: any, clientID: number) => {
+        if (clientID === currentClientId) return; // skip self
+        if (state.user && state.cursor) {
+          list.push({
+            clientID,
+            user: state.user,
+            cursor: state.cursor
+          });
+        }
+      });
+      setCollaborators(list);
+    };
+
+    provider.awareness.on('change', handleAwarenessChange);
+    handleAwarenessChange();
+
+    return () => {
+      provider.awareness.off('change', handleAwarenessChange);
+    };
+  }, [provider]);
+
+  // Compute and update caret coordinate offsets
+  const updateCursorCoordinates = useCallback(() => {
+    const textarea = textareaRef.current;
+    if (!textarea || collaborators.length === 0) {
+      setCursorCoords({});
+      return;
+    }
+
+    const coords: typeof cursorCoords = {};
+    collaborators.forEach(collab => {
+      try {
+        const index = collab.cursor.anchor;
+        const c = getTextCaretCoordinates(textarea, index);
+        coords[collab.clientID] = {
+          top: c.top,
+          left: c.left,
+          name: collab.user.name,
+          color: collab.user.color
+        };
+      } catch (e) {
+        // ignore coordinates calculations that go out-of-bounds
+      }
+    });
+    setCursorCoords(coords);
+  }, [collaborators]);
+
+  // Recalculate coordinates on scrolls, window resizing, and content updates
+  useEffect(() => {
+    updateCursorCoordinates();
+
+    window.addEventListener('resize', updateCursorCoordinates);
+
+    const textarea = textareaRef.current;
+    if (textarea) {
+      textarea.addEventListener('scroll', updateCursorCoordinates);
+    }
+
+    return () => {
+      window.removeEventListener('resize', updateCursorCoordinates);
+      if (textarea) {
+        textarea.removeEventListener('scroll', updateCursorCoordinates);
+      }
+    };
+  }, [collaborators, updateCursorCoordinates]);
 
   // Subconscious Blind Timer States
   const [subconsciousActive, setSubconsciousActive] = useState(false);
@@ -327,6 +474,7 @@ export const Notepad: React.FC<NotepadProps> = ({
               onFocus={() => setIsEditorFocused(true)}
               onBlur={() => setIsEditorFocused(false)}
               placeholder="Enter Destination Title (e.g., ...Baby One More Time)"
+              spellCheck="false"
               className="flex-1 bg-transparent text-sm font-bold text-ink placeholder-ink-light/70 focus:outline-none py-0.5 border-b border-transparent focus:border-terracotta transition"
               disabled={subconsciousActive}
             />
@@ -506,11 +654,13 @@ export const Notepad: React.FC<NotepadProps> = ({
         )}
 
         {/* Text Area Canvas */}
-        <div className="flex-1 h-full min-w-0" onClick={(e) => e.stopPropagation()}>
+        <div className="flex-1 h-full min-w-0 relative" onClick={(e) => e.stopPropagation()}>
           <HighlightingTextarea
             ref={textareaRef}
             value={content}
             onChange={(val) => updateActiveDraft({ content: val })}
+            yText={yDoc?.getText('content')}
+            provider={provider}
             onFocus={() => setIsEditorFocused(true)}
             onBlur={() => setIsEditorFocused(false)}
             onScroll={handleScroll}
@@ -522,6 +672,32 @@ export const Notepad: React.FC<NotepadProps> = ({
             subconsciousActive={subconsciousActive}
             isMobile={isMobile}
           />
+
+          {/* Collaborative Cursors Overlay */}
+          {Object.entries(cursorCoords).map(([clientID, coord]) => (
+            <div
+              key={clientID}
+              className="absolute pointer-events-none z-30 transition-all duration-75 ease-out"
+              style={{
+                top: `${coord.top}px`,
+                left: `${coord.left}px`,
+              }}
+            >
+              {/* Cursor Caret Line */}
+              <div
+                className="w-[2px] h-[24px]"
+                style={{ backgroundColor: coord.color }}
+              />
+
+              {/* Cursor Name Flag */}
+              <div
+                className="absolute left-0 bottom-full mb-0.5 px-1.5 py-0.5 rounded text-[9px] font-mono font-bold text-white whitespace-nowrap shadow-sm select-none"
+                style={{ backgroundColor: coord.color }}
+              >
+                {coord.name}
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     </div>

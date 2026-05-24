@@ -20,7 +20,9 @@
     "mongoose": "^8.10.1",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
-    "ws": "^8.21.0"
+    "ws": "^8.21.0",
+    "y-websocket": "^2.0.4",
+    "yjs": "^13.6.30"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

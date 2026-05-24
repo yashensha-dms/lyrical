@@ -1,7 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Plus, Trash2, Search, FileDown, FileUp, ChevronLeft, Mic, Copy, PlusCircle, FileText, Quote, Edit2, ArrowRight, Check, X } from 'lucide-react';
 import type { Draft } from '../hooks/useDrafts';
 import { AudioDemoArea } from './AudioDemoArea';
+import * as Y from 'yjs';
+import { WebsocketProvider } from 'y-websocket';
+import { useYjsTextarea } from '../hooks/useYjsTextarea';
 
 interface Phrase {
   id: string;
@@ -22,6 +25,8 @@ interface SidebarProps {
   setIsSidebarOpen: (open: boolean) => void;
   isCloudMode: boolean;
   isMobile?: boolean;
+  yDoc?: Y.Doc | null;
+  provider?: WebsocketProvider | null;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -37,6 +42,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   setIsSidebarOpen,
   isCloudMode,
   isMobile = false,
+  yDoc,
+  provider,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -45,6 +52,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [isClearingAll, setIsClearingAll] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [toastTimeoutId, setToastTimeoutId] = useState<any>(null);
+
+  // Yjs Scrapbook Textarea Binding
+  const scrapbookRef = useRef<HTMLTextAreaElement>(null);
+  const scrapbookYText = yDoc?.getText('scrapbook');
+  const scrapbookBinding = useYjsTextarea(scrapbookYText, provider || null, scrapbookRef);
+
+  const scrapbookOnChange = scrapbookYText ? scrapbookBinding.onChange : (e: React.ChangeEvent<HTMLTextAreaElement>) => updateActiveDraft({ scrapbook: e.target.value });
 
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
     if (toastTimeoutId) {
@@ -226,6 +240,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 placeholder="Search lyrics..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
+                spellCheck="false"
                 className="w-full bg-paper-dark border border-paper-darker rounded px-8 py-1.5 text-xs text-ink placeholder-ink-light focus:outline-none focus:border-terracotta transition"
               />
             </div>
@@ -308,6 +323,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                               onBlur={() => finishRename(draft.id)}
                               onKeyDown={(e) => e.key === 'Enter' && finishRename(draft.id)}
                               autoFocus
+                              spellCheck="false"
                               className="w-full bg-paper border border-terracotta rounded px-1.5 py-0.5 text-xs text-ink focus:outline-none"
                               aria-label="Rename song draft"
                             />
@@ -419,6 +435,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 placeholder="Search snippets..."
                 value={catcherSearchQuery}
                 onChange={(e) => setCatcherSearchQuery(e.target.value)}
+                spellCheck="false"
                 className="w-full bg-paper border border-paper-darker rounded-lg pl-8 pr-7 py-1.5 text-xs text-ink placeholder-ink-light/80 focus:outline-none focus:border-terracotta/50 focus:ring-1 focus:ring-terracotta/20 transition-all"
               />
               {catcherSearchQuery && (
@@ -439,6 +456,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 placeholder="Capture overheard phrase, dialogue, or hook idea..."
                 value={newPhraseText}
                 onChange={(e) => setNewPhraseText(e.target.value)}
+                spellCheck="false"
                 className="w-full bg-paper border border-paper-darker rounded-lg p-2.5 text-xs text-ink placeholder-ink-light/70 focus:outline-none focus:border-terracotta/40 focus:ring-2 focus:ring-terracotta/15 transition resize-none"
                 aria-label="Overheard phrase or hook idea"
               />
@@ -486,6 +504,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         <textarea
                           value={editingPhraseText}
                           onChange={(e) => setEditingPhraseText(e.target.value)}
+                          spellCheck="false"
                           className="w-full bg-paper border border-paper-darker rounded-lg p-2 text-xs text-ink focus:outline-none resize-none"
                           rows={3}
                           autoFocus
@@ -616,8 +635,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </label>
               <textarea
                 id="scrapbook-editor"
-                value={activeDraft.scrapbook}
-                onChange={(e) => updateActiveDraft({ scrapbook: e.target.value })}
+                ref={scrapbookRef}
+                value={scrapbookYText ? undefined : (activeDraft?.scrapbook || '')}
+                defaultValue={scrapbookYText ? scrapbookYText.toString() : undefined}
+                onChange={scrapbookOnChange}
+                spellCheck="false"
                 placeholder="Dump pop culture quotes, chick flick lines, overheard dialogues, vocalist drama notes, or basic chords here..."
                 className="flex-1 w-full bg-paper/60 border border-paper-darker rounded-lg p-3 text-xs text-ink placeholder-ink-light font-serif leading-relaxed resize-none focus:outline-none focus:border-terracotta focus:bg-paper focus:ring-2 focus:ring-terracotta/20 transition"
               />
