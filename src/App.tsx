@@ -83,6 +83,15 @@ function App() {
     return newDraft;
   };
 
+  // Handle delete draft: delete and navigate back to homepage if it was the active draft
+  const handleDeleteDraft = async (id: string) => {
+    const isDeletingActive = activeDraft?.id === id;
+    await deleteDraft(id);
+    if (isDeletingActive) {
+      navigate('/');
+    }
+  };
+
   // Show landing if no active draft
   const showLanding = !activeDraft;
 
@@ -111,7 +120,7 @@ function App() {
         selectDraft={handleSelectDraft}
         createDraft={handleCreateDraft}
         updateActiveDraft={updateActiveDraft}
-        deleteDraft={deleteDraft}
+        deleteDraft={handleDeleteDraft}
         exportAllDrafts={exportAllDrafts}
         importDrafts={importDrafts}
         syncLocalToCloud={syncLocalToCloud}
@@ -243,7 +252,7 @@ function App() {
               selectDraft={handleSelectDraft}
               createDraft={handleCreateDraft}
               updateActiveDraft={updateActiveDraft}
-              deleteDraft={deleteDraft}
+              deleteDraft={handleDeleteDraft}
               exportAllDrafts={exportAllDrafts}
               importDrafts={importDrafts}
               setIsSidebarOpen={setIsSidebarOpen}

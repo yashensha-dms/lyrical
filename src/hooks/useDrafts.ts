@@ -540,7 +540,7 @@ export function useDrafts() {
     setDrafts(prev => prev.filter(d => d.id !== id));
 
     if (activeDraftId === id) {
-      setActiveDraftId(drafts.find(d => d.id !== id)?.id || null);
+      setActiveDraftId(null);
     }
 
     if (isCloudModeRef.current) {
@@ -548,13 +548,12 @@ export function useDrafts() {
         const res = await fetch(`/api/drafts/${id}`, { method: 'DELETE' });
         if (!res.ok) throw new Error('Cloud delete failed');
       } catch (e) {
-        console.error('Failed to delete on cloud, deleting locally', e);
-        await deleteLocalDraft(id);
+        console.error('Failed to delete on cloud:', e);
       }
-    } else {
-      await deleteLocalDraft(id);
     }
-  }, [activeDraftId, drafts]);
+    // Always clear from local IndexedDB backup to prevent auto-sync from re-creating it
+    await deleteLocalDraft(id);
+  }, [activeDraftId]);
 
   const syncLocalToCloud = useCallback(async () => {
     setIsSaving(true);
