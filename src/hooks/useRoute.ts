@@ -9,9 +9,15 @@ import { useState, useEffect, useCallback } from 'react';
 export function useRoute() {
   const getRouteState = () => {
     const parts = window.location.pathname.split('/');
-    // /draft/:id
+    // 1. Check path routing: /draft/:id
     if (parts[1] === 'draft' && parts[2]) {
       return { draftId: decodeURIComponent(parts[2]) };
+    }
+    // 2. Check query parameter routing: ?share=id
+    const searchParams = new URLSearchParams(window.location.search);
+    const shareId = searchParams.get('share');
+    if (shareId) {
+      return { draftId: shareId };
     }
     return { draftId: null };
   };

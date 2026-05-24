@@ -203,9 +203,12 @@ export function useDrafts() {
       if (parts[1] === 'draft' && parts[2]) {
         urlDraftIdToUse = decodeURIComponent(parts[2]);
       } else {
-        urlDraftIdToUse = null;
+        const searchParams = new URLSearchParams(window.location.search);
+        urlDraftIdToUse = searchParams.get('share') || null;
       }
     }
+
+    console.log('[loadDrafts] initialDraftId:', initialDraftId, 'urlDraftIdToUse:', urlDraftIdToUse, 'pathname:', window.location.pathname, 'search:', window.location.search);
 
     let dbConnected = false;
     try {
@@ -338,11 +341,14 @@ export function useDrafts() {
 
     // Determine which draft to activate
     // Priority: URL-provided ID > null (empty/landing state)
+    console.log('[loadDrafts] deciding activation. urlDraftIdToUse:', urlDraftIdToUse, 'loaded drafts count:', loaded.length);
     if (urlDraftIdToUse && loaded.some(d => d.id === urlDraftIdToUse)) {
+      console.log('[loadDrafts] activating exists draft:', urlDraftIdToUse);
       setActiveDraftId(urlDraftIdToUse);
     } else if (urlDraftIdToUse && cloudActive) {
       // Try fetching a draft from server that's not in our list (shared link)
       try {
+        console.log('[loadDrafts] draft not in list, fetching shared link:', urlDraftIdToUse);
         const res = await fetch(`/api/drafts/${urlDraftIdToUse}`);
         if (res.ok) {
           const d = await res.json();
@@ -362,14 +368,18 @@ export function useDrafts() {
             if (exists > -1) return prev.map(x => x.id === sharedDraft.id ? sharedDraft : x);
             return [sharedDraft, ...prev];
           });
+          console.log('[loadDrafts] activating shared draft:', sharedDraft.id);
           setActiveDraftId(sharedDraft.id);
         } else {
+          console.log('[loadDrafts] shared draft fetch failed, setting activeDraftId to null');
           setActiveDraftId(null);
         }
-      } catch {
+      } catch (err) {
+        console.error('[loadDrafts] shared draft fetch error, setting activeDraftId to null', err);
         setActiveDraftId(null);
       }
     } else {
+      console.log('[loadDrafts] no url draft, setting activeDraftId to null');
       // Always return to empty state (null) unless a specific project link is called
       setActiveDraftId(null);
     }

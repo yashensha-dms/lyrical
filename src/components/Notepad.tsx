@@ -325,7 +325,7 @@ export const Notepad: React.FC<NotepadProps> = ({
   }, [playChime]);
 
   const handleShare = () => {
-    const shareUrl = `${window.location.origin}/?share=${draftId}`;
+    const shareUrl = `${window.location.origin}/draft/${draftId}`;
     navigator.clipboard.writeText(shareUrl).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
