@@ -124,15 +124,37 @@ export function useDrafts() {
     const templateText = ydoc.getText('targetTemplate');
     const settingsMap = ydoc.getMap('settings');
 
-    const colors = ['#E25C3D', '#2D7A56', '#7C4DB8', '#D97706', '#2563EB', '#DB2777', '#059669', '#78716C'];
-    const clientID = providerInstance.awareness.clientID;
-    const assignedColor = colors[clientID % colors.length];
-    const assignedNumber = (clientID % 99) + 1;
+    const colors = [
+      '#E25C3D', '#2D7A56', '#7C4DB8', '#D97706', '#2563EB', '#DB2777', '#059669', '#78716C',
+      '#EF4444', '#F97316', '#F59E0B', '#10B981', '#06B6D4', '#3B82F6', '#6366F1', '#8B5CF6',
+      '#EC4899', '#F43F5E', '#14B8A6', '#84CC16'
+    ];
+    const assignedColor = colors[Math.floor(Math.random() * colors.length)];
+
+    const updateLocalUser = () => {
+      const awareness = providerInstance.awareness;
+      const states = Array.from(awareness.getStates().keys()).sort((a, b) => a - b);
+      const index = states.indexOf(awareness.clientID);
+      const writerNum = index >= 0 ? index + 1 : 1;
+
+      const currentState = awareness.getLocalState();
+      const newName = `Writer ${writerNum}`;
+
+      if (!currentState?.user || currentState.user.name !== newName) {
+        awareness.setLocalStateField('user', {
+          name: newName,
+          color: currentState?.user?.color || assignedColor
+        });
+      }
+    };
+
+    providerInstance.awareness.on('change', updateLocalUser);
 
     providerInstance.awareness.setLocalStateField('user', {
-      name: `Writer ${assignedNumber}`,
+      name: 'Writer 1',
       color: assignedColor
     });
+    updateLocalUser();
 
     // Bidirectional sync handler from Yjs to React state
     const syncYjsToReact = () => {

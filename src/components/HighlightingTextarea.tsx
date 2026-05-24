@@ -632,34 +632,33 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
     },
 
     // Collaborative Cursors & Selections
-    ".cm-ySelection": {
-      backgroundColor: "rgba(192, 105, 78, 0.2)"
-    },
     ".cm-ySelectionCaret": {
       position: "absolute",
       borderLeft: "2px solid",
       borderRight: "none",
       marginLeft: "-1px",
       marginRight: "-1px",
-      height: "1.2em",
+      height: "1.25em",
       userSelect: "none",
       pointerEvents: "none"
     },
     ".cm-ySelectionInfo": {
       position: "absolute",
-      top: "-1.2em",
+      top: "-18px",
       left: "-1px",
       fontSize: "9px",
-      fontFamily: "var(--font-mono, monospace)",
-      fontWeight: "bold",
+      fontFamily: "var(--font-sans, system-ui, -apple-system, sans-serif)",
+      fontWeight: "600",
       color: "white",
-      padding: "1px 4px",
-      borderRadius: "3px",
+      padding: "1px 5px",
+      borderRadius: "3px 3px 3px 0",
       lineHeight: "normal",
       whiteSpace: "nowrap",
       userSelect: "none",
       pointerEvents: "none",
-      zIndex: 100
+      zIndex: 100,
+      opacity: "1 !important",
+      boxShadow: "0 1px 3px rgba(0, 0, 0, 0.15)",
     }
   });
 
