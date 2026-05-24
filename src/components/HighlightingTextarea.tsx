@@ -117,15 +117,16 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
           </span>
         );
       }
-
-      // Re-add the newline except after the last line
-      if (idx < lines.length - 1) {
-        nodes.push('\n');
-      }
     });
 
     // Trailing space to keep scrollHeight correct when last char is newline
-    if (value.endsWith('\n')) nodes.push(' ');
+    if (value.endsWith('\n')) {
+      nodes.push(
+        <span key="trailing" style={{ display: 'block', color: 'transparent' }}>
+          {' '}
+        </span>
+      );
+    }
 
     return <>{nodes}</>;
   };

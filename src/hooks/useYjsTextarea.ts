@@ -8,6 +8,8 @@ export function useYjsTextarea(
   textareaRef: React.RefObject<HTMLTextAreaElement | null>
 ) {
   const yTextRef = useRef(yText);
+  const lastValueRef = useRef('');
+
   useEffect(() => {
     yTextRef.current = yText;
   }, [yText]);
@@ -17,7 +19,9 @@ export function useYjsTextarea(
     const textarea = textareaRef.current;
     if (!textarea || !yText) return;
 
-    textarea.value = yText.toString();
+    const val = yText.toString();
+    textarea.value = val;
+    lastValueRef.current = val;
   }, [yText, textareaRef]);
 
   // Sync Y.Text modifications to state & DOM value
@@ -66,6 +70,7 @@ export function useYjsTextarea(
 
       // Update DOM value directly to avoid visual lag, and set the new selection range
       textarea.value = newValue;
+      lastValueRef.current = newValue;
       textarea.setSelectionRange(newSelectionStart, newSelectionEnd);
     };
 
@@ -82,7 +87,7 @@ export function useYjsTextarea(
 
     const textarea = e.target;
     const newValue = textarea.value;
-    const oldValue = activeYText.toString();
+    const oldValue = lastValueRef.current;
 
     if (newValue === oldValue) return;
 
@@ -111,6 +116,8 @@ export function useYjsTextarea(
         activeYText.insert(start, insertedText);
       }
     }, 'local-keystroke');
+
+    lastValueRef.current = newValue;
   };
 
   // Sync cursor selection position to Yjs Awareness
