@@ -85,3 +85,42 @@ textarea::selection {
     0 4px 12px rgba(44, 42, 41, 0.08),
     0 1px 4px rgba(44, 42, 41, 0.04);
 }
+
+/* Custom styles for CodeMirror Section Tags and Backup lines */
+.cm-section-tag-line {
+  font-weight: bold !important;
+  border-left: 3px solid var(--color-terracotta, #C0694E) !important;
+  padding-left: 29px !important;
+  margin-left: -32px !important;
+}
+
+.cm-backup-line {
+  font-style: italic !important;
+  color: var(--color-ink-muted, #7A736A) !important;
+  border-left: 2px solid rgba(192, 105, 78, 0.35) !important;
+  padding-left: 30px !important;
+  margin-left: -32px !important;
+}
+
+/* Mobile overrides */
+.is-mobile .cm-section-tag-line {
+  padding-left: 13px !important;
+  margin-left: -16px !important;
+}
+
+.is-mobile .cm-backup-line {
+  padding-left: 14px !important;
+  margin-left: -16px !important;
+}
+
+/* Gutters hidden overrides (Scrapbook in sidebar) */
+.hide-gutters .cm-section-tag-line {
+  padding-left: 9px !important;
+  margin-left: -12px !important;
+}
+
+.hide-gutters .cm-backup-line {
+  padding-left: 10px !important;
+  margin-left: -12px !important;
+}
+

@@ -491,6 +491,8 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
   const containerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const isCorrectingRef = useRef(false);
+  const isLineCopyRef = useRef(false);
+  const lastCopiedLineTextRef = useRef("");
 
   // Command palette picker state
   const [showPicker, setShowPicker] = React.useState(false);
@@ -621,8 +623,6 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
     ".cm-gutters": {
       backgroundColor: "var(--color-paper-dark, #F2EFE9)",
       borderRight: "1px solid var(--color-paper-darker, #E4DDD4)",
-      paddingTop: isMobile ? "16px" : "24px",
-      paddingBottom: isMobile ? "16px" : "24px",
     },
     ".cm-syllable-gutter": {
       width: "64px",
@@ -630,20 +630,7 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
       flexShrink: 0,
       userSelect: "none",
     },
-    // Visual styles for Section Tags & Backup lines
-    ".cm-section-tag-line": {
-      fontWeight: "bold",
-      borderLeft: "3px solid var(--color-terracotta, #C0694E) !important",
-      paddingLeft: "8px !important",
-      marginLeft: "-10px !important",
-    },
-    ".cm-backup-line": {
-      fontStyle: "italic",
-      color: "var(--color-ink-muted, #7A736A) !important",
-      borderLeft: "2px solid rgba(192, 105, 78, 0.35) !important",
-      paddingLeft: "8px !important",
-      marginLeft: "-10px !important",
-    },
+
     // Collaborative Cursors & Selections
     ".cm-ySelection": {
       backgroundColor: "rgba(192, 105, 78, 0.2)"
@@ -739,6 +726,25 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
       view.dispatch({
         changes: { from, to, insert: "" }
       });
+      isLineCopyRef.current = false;
+    } else {
+      const line = view.state.doc.lineAt(view.state.selection.main.head);
+      const text = line.text + "\n";
+      await navigator.clipboard.writeText(text);
+      isLineCopyRef.current = true;
+      lastCopiedLineTextRef.current = line.text;
+
+      let fromDel = line.from;
+      let toDel = line.to;
+      if (line.number < view.state.doc.lines) {
+        toDel = view.state.doc.line(line.number + 1).from;
+      } else if (line.number > 1) {
+        fromDel = view.state.doc.line(line.number - 1).to;
+      }
+
+      view.dispatch({
+        changes: { from: fromDel, to: toDel, insert: "" }
+      });
     }
     setShowContextMenu(false);
     view.focus();
@@ -751,9 +757,12 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
     let text: string;
     if (from !== to) {
       text = view.state.sliceDoc(from, to);
+      isLineCopyRef.current = false;
     } else {
       const line = view.state.doc.lineAt(view.state.selection.main.head);
-      text = line.text;
+      text = line.text + "\n";
+      isLineCopyRef.current = true;
+      lastCopiedLineTextRef.current = line.text;
     }
     await navigator.clipboard.writeText(text);
     setShowContextMenu(false);
@@ -765,11 +774,22 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
     const view = viewRef.current;
     try {
       const text = await navigator.clipboard.readText();
-      const pos = view.state.selection.main.head;
-      view.dispatch({
-        changes: { from: pos, to: pos, insert: text },
-        selection: { anchor: pos + text.length }
-      });
+      const { from, to, empty } = view.state.selection.main;
+      
+      const isLineCopy = isLineCopyRef.current || text.endsWith('\n');
+      if (empty && isLineCopy) {
+        const line = view.state.doc.lineAt(from);
+        const insertText = text.endsWith('\n') ? text : text + '\n';
+        view.dispatch({
+          changes: { from: line.from, insert: insertText },
+          scrollIntoView: true
+        });
+      } else {
+        view.dispatch({
+          changes: { from, to, insert: text },
+          selection: { anchor: from + text.length }
+        });
+      }
     } catch (e) {
       console.error("Paste blocked by browser permissions", e);
     }
@@ -899,16 +919,45 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
       bracketMatching(),
       closeBrackets(),
       keymap.of([
-        { key: "Ctrl-ArrowUp", run: moveLineUp },
-        { key: "Ctrl-ArrowDown", run: moveLineDown },
+        { key: "Alt-ArrowUp", run: moveLineUp },
+        { key: "Alt-ArrowDown", run: moveLineDown },
         {
           key: "Ctrl-c",
           run: (view) => {
             if (view.state.selection.main.empty) {
               const line = view.state.doc.lineAt(view.state.selection.main.head);
-              navigator.clipboard.writeText(line.text);
+              navigator.clipboard.writeText(line.text + "\n");
+              isLineCopyRef.current = true;
+              lastCopiedLineTextRef.current = line.text;
               return true;
             }
+            isLineCopyRef.current = false;
+            return false;
+          }
+        },
+        {
+          key: "Ctrl-x",
+          run: (view) => {
+            if (view.state.selection.main.empty) {
+              const line = view.state.doc.lineAt(view.state.selection.main.head);
+              navigator.clipboard.writeText(line.text + "\n");
+              isLineCopyRef.current = true;
+              lastCopiedLineTextRef.current = line.text;
+              
+              let fromDel = line.from;
+              let toDel = line.to;
+              if (line.number < view.state.doc.lines) {
+                toDel = view.state.doc.line(line.number + 1).from;
+              } else if (line.number > 1) {
+                fromDel = view.state.doc.line(line.number - 1).to;
+              }
+              
+              view.dispatch({
+                changes: { from: fromDel, to: toDel, insert: "" }
+              });
+              return true;
+            }
+            isLineCopyRef.current = false;
             return false;
           }
         },
@@ -936,6 +985,11 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
         })
       ),
       EditorView.updateListener.of((update) => {
+        if (update.selectionSet) {
+          if (!update.state.selection.main.empty) {
+            isLineCopyRef.current = false;
+          }
+        }
         if (update.docChanged) {
           latestRef.current.onChange(update.state.doc.toString());
           
@@ -974,6 +1028,26 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
           event.preventDefault();
           triggerContextMenu(event.clientX, event.clientY);
           return true;
+        },
+        paste: (event, view) => {
+          const clipboardData = event.clipboardData;
+          if (!clipboardData) return;
+          const text = clipboardData.getData("text");
+          if (!text) return;
+
+          if (view.state.selection.main.empty) {
+            const isLineCopy = isLineCopyRef.current || text.endsWith('\n');
+            if (isLineCopy) {
+              event.preventDefault();
+              const line = view.state.doc.lineAt(view.state.selection.main.head);
+              const insertText = text.endsWith('\n') ? text : text + '\n';
+              view.dispatch({
+                changes: { from: line.from, insert: insertText },
+                scrollIntoView: true
+              });
+              return true;
+            }
+          }
         },
         keydown: (event) => {
           // Intercept keys if tag picker is active
@@ -1059,10 +1133,14 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
     }
   };
 
+  const containerClass = `w-full h-full cursor-text overflow-hidden relative ${className || ''} ${
+    hideGutters ? 'hide-gutters' : (isMobile ? 'is-mobile' : 'is-desktop')
+  }`;
+
   return (
     <div
       ref={containerRef}
-      className={`w-full h-full cursor-text overflow-hidden relative ${className || ''}`}
+      className={containerClass}
       style={style}
       onClick={handleContainerClick}
     >
