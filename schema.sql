@@ -3,8 +3,8 @@ CREATE TABLE IF NOT EXISTS public.projects (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE DEFAULT auth.uid(),
   title TEXT NOT NULL,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  yjs_state BYTEA
+  content TEXT NOT NULL DEFAULT '',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 -- Enable Row Level Security (RLS)

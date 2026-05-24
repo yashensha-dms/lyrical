@@ -4,7 +4,6 @@ import dotenv from 'dotenv';
 import path from 'path';
 import http from 'http';
 import { WebSocketServer } from 'ws';
-import * as Y from 'yjs';
 // @ts-ignore
 import { setupWSConnection, setPersistence, docs } from 'y-websocket/bin/utils';
 import { supabase } from './supabase';
@@ -27,12 +26,15 @@ function debounce<T extends (...args: any[]) => void>(func: T, wait: number): (.
 }
 
 // ── Yjs Collaboration & Supabase Persistence ────────────────────────────────
+// Persistence uses plain text (title + content) stored directly in the projects
+// table — no binary Yjs state. This avoids the dual-module Yjs constructor
+// conflict where y-websocket's internal Yjs and our import are different instances.
 setPersistence({
-  bindState: async (docName: string, ydoc: Y.Doc) => {
+  bindState: async (docName: string, ydoc: any) => {
     try {
       const { data: project, error } = await supabase
         .from('projects')
-        .select('title, yjs_state')
+        .select('title, content')
         .eq('id', docName)
         .single();
 
@@ -42,17 +44,15 @@ setPersistence({
       }
 
       if (project) {
-        const titleText = ydoc.getText('title');
-        
-        // Hydrate from binary state if it exists
-        if (project.yjs_state) {
-          Y.applyUpdate(ydoc, Buffer.from(project.yjs_state));
-        }
-
-        // Initialize Yjs shared types if empty
+        // Hydrate Yjs shared types from plain text — safe across module instances
         ydoc.transact(() => {
+          const titleText = ydoc.getText('title');
           if (titleText.length === 0 && project.title) {
             titleText.insert(0, project.title);
+          }
+          const contentText = ydoc.getText('content');
+          if (contentText.length === 0 && project.content) {
+            contentText.insert(0, project.content);
           }
         });
       }
@@ -60,24 +60,21 @@ setPersistence({
       console.error(`Error loading project ${docName} for Yjs persistence:`, err);
     }
 
-    // Debounced save back to Supabase projects table
+    // Debounced save: extract plain text and write to Supabase
     const saveToDb = debounce(async () => {
       try {
         const title = ydoc.getText('title').toString();
-        const stateUpdate = Y.encodeStateAsUpdate(ydoc);
+        const content = ydoc.getText('content').toString();
 
         const { error } = await supabase
           .from('projects')
-          .update({
-            title,
-            yjs_state: Buffer.from(stateUpdate)
-          })
+          .update({ title, content })
           .eq('id', docName);
 
         if (error) throw error;
-        console.log(`Auto-saved collaborative project ${docName} to Supabase.`);
+        console.log(`Auto-saved project ${docName} to Supabase.`);
       } catch (err: any) {
-        console.error(`Failed to auto-save collaborative project ${docName}:`, err.message);
+        console.error(`Failed to auto-save project ${docName}:`, err.message);
       }
     }, 2000);
 
@@ -85,23 +82,20 @@ setPersistence({
       saveToDb();
     });
   },
-  writeState: async (docName: string, ydoc: Y.Doc) => {
+  writeState: async (docName: string, ydoc: any) => {
     try {
       const title = ydoc.getText('title').toString();
-      const stateUpdate = Y.encodeStateAsUpdate(ydoc);
+      const content = ydoc.getText('content').toString();
 
       const { error } = await supabase
         .from('projects')
-        .update({
-          title,
-          yjs_state: Buffer.from(stateUpdate)
-        })
+        .update({ title, content })
         .eq('id', docName);
 
       if (error) throw error;
-      console.log(`Final saved collaborative project ${docName} to Supabase.`);
+      console.log(`Final saved project ${docName} to Supabase.`);
     } catch (err: any) {
-      console.error(`Failed to final save collaborative project ${docName}:`, err.message);
+      console.error(`Failed to final save project ${docName}:`, err.message);
     }
   }
 });
