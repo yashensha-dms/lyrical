@@ -7,7 +7,7 @@ import type { DecorationSet } from '@codemirror/view';
 import { EditorState, Compartment, StateField } from '@codemirror/state';
 import { history, historyKeymap, defaultKeymap, moveLineUp, moveLineDown } from '@codemirror/commands';
 import { bracketMatching, indentOnInput } from '@codemirror/language';
-import { closeBrackets, closeBracketsKeymap } from '@codemirror/autocomplete';
+import { closeBrackets, closeBracketsKeymap, autocompletion, completionKeymap } from '@codemirror/autocomplete';
 import { yCollab } from 'y-codemirror.next';
 import { countLineSyllables } from '../utils/syllables';
 import { supabase } from '../utils/supabaseClient';
@@ -331,130 +331,7 @@ function enforceTagConventions(view: EditorView) {
   }
 }
 
-// Generate tag picker options
-function getPickerOptions(view: EditorView): string[] {
-  const doc = view.state.doc;
-  // Track full tagName alongside baseName so the picker can show exact labels
-  const sections: { tagName: string, baseName: string, text: string, isEmpty: boolean }[] = [];
-  let currentSec: { tagName: string, baseName: string, contentLines: string[] } | null = null;
 
-  for (let i = 1; i <= doc.lines; i++) {
-    const line = doc.line(i);
-    const text = line.text.trim();
-    const tagMatch = text.match(/^\[(.*?)\]$/);
-
-    if (tagMatch) {
-      if (currentSec) {
-        sections.push({
-          tagName: currentSec.tagName,
-          baseName: currentSec.baseName,
-          text: currentSec.contentLines.join('\n').trim(),
-          isEmpty: currentSec.contentLines.join('\n').trim().length === 0
-        });
-      }
-      const tagContent = tagMatch[1].trim();
-      const numMatch = tagContent.match(/^(.*?)(?:\s+(\d+))?$/);
-      const baseName = numMatch ? numMatch[1].trim() : tagContent;
-      currentSec = { tagName: tagContent, baseName, contentLines: [] };
-    } else {
-      if (currentSec) {
-        currentSec.contentLines.push(line.text);
-      }
-    }
-  }
-  if (currentSec) {
-    sections.push({
-      tagName: currentSec.tagName,
-      baseName: currentSec.baseName,
-      text: currentSec.contentLines.join('\n').trim(),
-      isEmpty: currentSec.contentLines.join('\n').trim().length === 0
-    });
-  }
-
-  const defaults = ["Verse", "Chorus", "Hook", "Bridge", "Intro", "Outro"];
-  const options: string[] = [];
-
-  const sectionsByBase: { [base: string]: typeof sections } = {};
-  sections.forEach(s => {
-    if (!sectionsByBase[s.baseName]) {
-      sectionsByBase[s.baseName] = [];
-    }
-    sectionsByBase[s.baseName].push(s);
-  });
-
-  defaults.forEach(base => {
-    const secs = sectionsByBase[base] || [];
-    if (secs.length === 0) {
-      // No existing sections for this base — show plain name to create first instance
-      options.push(base);
-    } else {
-      // Deduplicate by content to find independent (non-reference) sections
-      const independent: typeof sections = [];
-      secs.forEach(s => {
-        const isRef = independent.some(ind => ind.text === s.text);
-        if (!isRef) independent.push(s);
-      });
-      // Show each existing independent section by its real tag name (e.g. "Verse 1")
-      independent.forEach(ind => options.push(ind.tagName));
-      // Show a "create next" option only when the last independent has content
-      const lastInd = independent[independent.length - 1];
-      if (lastInd && !lastInd.isEmpty) {
-        options.push(`${base} ${independent.length + 1}`);
-      }
-    }
-  });
-
-  // Append any custom (non-default) tags that exist in the document
-  const customTags = new Set<string>();
-  sections.forEach(s => {
-    if (!defaults.includes(s.baseName)) {
-      customTags.add(s.tagName);
-    }
-  });
-  customTags.forEach(tag => options.push(tag));
-
-  return options;
-}
-
-// Parse sections for content to match when copy-pasting reference sections
-function parseSectionsForContent(text: string) {
-  const lines = text.split('\n');
-  const sections: { tagName: string, baseName: string, content: string }[] = [];
-  let currentTagName = "";
-  let currentBaseName = "";
-  let currentLines: string[] = [];
-
-  lines.forEach(line => {
-    const match = line.trim().match(/^\[(.*?)\]$/);
-    if (match) {
-      if (currentTagName) {
-        sections.push({
-          tagName: currentTagName,
-          baseName: currentBaseName,
-          content: currentLines.join('\n').trim()
-        });
-      }
-      currentTagName = match[1].trim();
-      const numMatch = currentTagName.match(/^(.*?)(?:\s+(\d+))?$/);
-      currentBaseName = numMatch ? numMatch[1].trim() : currentTagName;
-      currentLines = [];
-    } else {
-      if (currentTagName) {
-        currentLines.push(line);
-      }
-    }
-  });
-
-  if (currentTagName) {
-    sections.push({
-      tagName: currentTagName,
-      baseName: currentBaseName,
-      content: currentLines.join('\n').trim()
-    });
-  }
-
-  return sections;
-}
 
 export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, HighlightingTextareaProps>(({
   value,
@@ -485,12 +362,6 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
   const isLineCopyRef = useRef(false);
   const lastCopiedLineTextRef = useRef("");
 
-  // Command palette picker state
-  const [showPicker, setShowPicker] = React.useState(false);
-  const [pickerCoords, setPickerCoords] = React.useState({ top: 0, left: 0 });
-  const [pickerOptions, setPickerOptions] = React.useState<string[]>([]);
-  const [selectedIndex, setSelectedIndex] = React.useState(0);
-
   // Custom context menu state
   const [showContextMenu, setShowContextMenu] = React.useState(false);
   const [contextCoords, setContextCoords] = React.useState({ top: 0, left: 0 });
@@ -507,9 +378,6 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
 
   // A ref to keep track of the latest props and state values, preventing CodeMirror recreation
   const latestRef = React.useRef({
-    showPicker,
-    pickerOptions,
-    selectedIndex,
     exportFilename,
     title,
     showContextMenu,
@@ -527,9 +395,6 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
 
   React.useEffect(() => {
     latestRef.current = {
-      showPicker,
-      pickerOptions,
-      selectedIndex,
       exportFilename,
       title,
       showContextMenu,
@@ -809,7 +674,6 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
     const left = clientX - rect.left;
     setContextCoords({ top, left });
     setShowContextMenu(true);
-    setShowPicker(false);
   };
 
   // Custom Context Menu actions
@@ -894,82 +758,7 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
     view.focus();
   };
 
-  const triggerPicker = (manualCoords?: { top: number; left: number }) => {
-    if (!viewRef.current) return;
-    const view = viewRef.current;
 
-    const opts = getPickerOptions(view);
-    if (opts.length === 0) return;
-
-    if (manualCoords) {
-      // Called from context menu — use the provided position directly
-      setPickerCoords(manualCoords);
-      setPickerOptions(opts);
-      setSelectedIndex(0);
-      setShowPicker(true);
-      return;
-    }
-
-    // Called via keyboard shortcut — position at the cursor
-    const pos = view.state.selection.main.head;
-    try {
-      const coords = view.coordsAtPos(pos);
-      if (coords && containerRef.current) {
-        const containerRect = containerRef.current.getBoundingClientRect();
-        const left = coords.left - containerRect.left;
-        const top = coords.bottom - containerRect.top;
-        setPickerCoords({ top, left });
-        setPickerOptions(opts);
-        setSelectedIndex(0);
-        setShowPicker(true);
-      } else if (containerRef.current) {
-        // Cursor not visible — fall back to top-left of the editor
-        setPickerCoords({ top: 48, left: 32 });
-        setPickerOptions(opts);
-        setSelectedIndex(0);
-        setShowPicker(true);
-      }
-    } catch (e) {
-      console.error("Failed to get coordinates", e);
-    }
-  };
-
-  const handleSelectOption = (opt: string) => {
-    if (!viewRef.current) return;
-    const view = viewRef.current;
-    const pos = view.state.selection.main.head;
-    
-    const docText = view.state.doc.toString();
-    const sections = parseSectionsForContent(docText);
-    // Match by exact tagName first, then by baseName as fallback
-    const matchedSec = sections.find(s => s.tagName.toLowerCase() === opt.toLowerCase())
-      ?? sections.find(s => s.baseName.toLowerCase() === opt.toLowerCase());
-    
-    let insertText: string;
-    if (matchedSec && matchedSec.content) {
-      // Use the matched section's exact tagName so enforceTagConventions
-      // recognises the content hash and treats this as a reference — not a new independent section
-      insertText = `[${matchedSec.tagName}]\n${matchedSec.content}\n`;
-    } else {
-      insertText = `[${opt}]\n`;
-    }
-
-    view.dispatch({
-      changes: { from: pos, to: pos, insert: insertText },
-      selection: { anchor: pos + insertText.length },
-      scrollIntoView: true
-    });
-
-    setShowPicker(false);
-    view.focus();
-  };
-
-  const handleInsertSectionTag = () => {
-    setShowContextMenu(false);
-    // Pass the context menu's position so the picker appears even if the
-    // editor cursor is scrolled out of the visible viewport.
-    triggerPicker({ top: contextCoords.top, left: contextCoords.left });
-  };
 
   // Re-sync subconscious writing mode state dynamically
   useEffect(() => {
@@ -1036,58 +825,8 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
       indentOnInput(),
       bracketMatching(),
       closeBrackets(),
+      autocompletion(),
       keymap.of([
-        {
-          // Register Ctrl+Space FIRST so it intercepts before defaultKeymap's startCompletion
-          key: "Ctrl-Space",
-          run: () => {
-            triggerPicker();
-            return true;
-          }
-        },
-        {
-          key: "ArrowDown",
-          run: () => {
-            if (latestRef.current.showPicker && latestRef.current.pickerOptions.length > 0) {
-              setSelectedIndex(prev => (prev + 1) % latestRef.current.pickerOptions.length);
-              return true;
-            }
-            return false;
-          }
-        },
-        {
-          key: "ArrowUp",
-          run: () => {
-            if (latestRef.current.showPicker && latestRef.current.pickerOptions.length > 0) {
-              setSelectedIndex(prev => (prev - 1 + latestRef.current.pickerOptions.length) % latestRef.current.pickerOptions.length);
-              return true;
-            }
-            return false;
-          }
-        },
-        {
-          key: "Enter",
-          run: () => {
-            if (latestRef.current.showPicker) {
-              const opt = latestRef.current.pickerOptions[latestRef.current.selectedIndex];
-              if (opt) {
-                handleSelectOption(opt);
-              }
-              return true;
-            }
-            return false;
-          }
-        },
-        {
-          key: "Escape",
-          run: () => {
-            if (latestRef.current.showPicker) {
-              setShowPicker(false);
-              return true;
-            }
-            return false;
-          }
-        },
         { key: "Alt-ArrowUp", run: moveLineUp },
         { key: "Alt-ArrowDown", run: moveLineDown },
         {
@@ -1147,7 +886,8 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
         },
         ...historyKeymap,
         ...defaultKeymap,
-        ...closeBracketsKeymap
+        ...closeBracketsKeymap,
+        ...completionKeymap
       ]),
       editorTheme,
       hideGutters ? [] : lyricDecorationsField,
@@ -1226,13 +966,6 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
           }
         },
         keydown: (event) => {
-          // Trigger Ctrl+Space tag picker
-          if (!hideGutters && event.ctrlKey && event.key === ' ') {
-            event.preventDefault();
-            triggerPicker();
-            return true;
-          }
-
           // Trigger Ctrl+S export dialog from keydown fallback if CM keymap did not catch it
           if (event.ctrlKey && event.key.toLowerCase() === 's') {
             event.preventDefault();
@@ -1257,7 +990,6 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
           }
         },
         mousedown: () => {
-          setShowPicker(false);
           setShowContextMenu(false);
           if (latestRef.current.onMouseUp) latestRef.current.onMouseUp();
           if (latestRef.current.onSelect) latestRef.current.onSelect();
@@ -1301,44 +1033,12 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
       style={style}
       onClick={handleContainerClick}
     >
-      {/* Ctrl+Space Tag Picker UI Overlay */}
-      {showPicker && (
-        <div
-          className="absolute bg-paper border border-paper-darker rounded-lg shadow-paper-md py-1.5 z-50 w-48 card-warm-md"
-          style={{
-            top: `${pickerCoords.top}px`,
-            left: `${pickerCoords.left}px`,
-            maxHeight: '200px',
-            overflowY: 'auto',
-            backgroundColor: 'var(--color-paper, #FAF8F5)',
-            borderColor: 'var(--color-paper-darker, #E4DDD4)'
-          }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          {pickerOptions.map((opt, idx) => (
-            <button
-              key={opt}
-              className={`w-full text-left px-3 py-1.5 text-xs transition flex items-center justify-between cursor-pointer ${
-                idx === selectedIndex ? 'bg-paper-active text-terracotta font-semibold' : 'text-ink hover:bg-paper-active'
-              }`}
-              style={{
-                color: idx === selectedIndex ? 'var(--color-terracotta, #C0694E)' : 'var(--color-ink, #2C2A29)',
-                backgroundColor: idx === selectedIndex ? 'var(--color-paper-active, #EDE8E1)' : 'transparent'
-              }}
-              onClick={() => handleSelectOption(opt)}
-            >
-              <span>{opt}</span>
-            </button>
-          ))}
-        </div>
-      )}
-
       {/* Custom Context Menu Overlay */}
       {showContextMenu && (
         <div
           className="absolute bg-paper border border-paper-darker rounded-lg shadow-paper-md py-1 z-[60] w-48 card-warm-md"
           style={{
-            top: `${contextCoords.top}px`,
+            top: `${contextCoords.top + 200 > window.innerHeight ? contextCoords.top - 200 : contextCoords.top}px`,
             left: `${contextCoords.left}px`,
             backgroundColor: 'var(--color-paper, #FAF8F5)',
             borderColor: 'var(--color-paper-darker, #E4DDD4)'
@@ -1395,13 +1095,6 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
           >
             <span>Add Backup Line</span>
             <span className="text-[10px] text-ink-light font-mono">&gt;</span>
-          </button>
-          <button
-            className="w-full text-left px-3 py-1.5 text-xs text-ink hover:bg-paper-active transition cursor-pointer flex items-center justify-between"
-            onClick={handleInsertSectionTag}
-          >
-            <span>Insert Section Tag</span>
-            <span className="text-[10px] text-ink-light font-mono">Ctrl+Space</span>
           </button>
         </div>
       )}
