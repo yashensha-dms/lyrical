@@ -4,6 +4,17 @@ import { WebsocketProvider } from 'y-websocket';
 import { getLocalDrafts, saveLocalDraft, deleteLocalDraft } from '../utils/indexedDb';
 import { supabase } from '../utils/supabaseClient';
 
+const parseArray = (val: any): string[] => {
+  if (Array.isArray(val)) return val;
+  if (typeof val === 'string' && val.trim()) {
+    try {
+      const parsed = JSON.parse(val);
+      if (Array.isArray(parsed)) return parsed;
+    } catch {}
+  }
+  return [];
+};
+
 
 export interface Draft {
   id: string;
@@ -305,24 +316,29 @@ export function useDrafts(session: any) {
 
     if (cloudActive) {
       try {
-        const res = await fetch('/api/projects', {
+        const res = await fetch(`/api/projects?t=${Date.now()}`, {
           headers: getAuthHeaders()
         });
         if (res.ok) {
           const data = await res.json();
-          loaded = data.map((d: any) => ({
-            id: d.id,
-            title: d.title,
-            content: '', // Yjs hydrates content dynamically
-            targetTemplate: '',
-            syllableTolerance: 1,
-            createdAt: Date.parse(d.created_at) || Date.now(),
-            updatedAt: Date.parse(d.created_at) || Date.now(),
-            status: d.status || 'Demo',
-            writers: Array.isArray(d.writers) ? d.writers : [],
-            producers: Array.isArray(d.producers) ? d.producers : [],
-            featuredArtists: Array.isArray(d.featured_artists) ? d.featured_artists : [],
-          }));
+          console.log('[loadDrafts] API raw projects data:', data);
+          loaded = data.map((d: any) => {
+            const mapped = {
+              id: d.id,
+              title: d.title,
+              content: '', // Yjs hydrates content dynamically
+              targetTemplate: '',
+              syllableTolerance: 1,
+              createdAt: Date.parse(d.created_at) || Date.now(),
+              updatedAt: Date.parse(d.created_at) || Date.now(),
+              status: d.status || 'Demo',
+              writers: parseArray(d.writers),
+              producers: parseArray(d.producers),
+              featuredArtists: parseArray(d.featured_artists),
+            };
+            console.log(`[loadDrafts] mapped project ${d.title}:`, mapped);
+            return mapped;
+          });
         } else {
           throw new Error('Failed to fetch projects from server');
         }
@@ -411,9 +427,9 @@ export function useDrafts(session: any) {
               createdAt: Date.parse(data.created_at) || Date.now(),
               updatedAt: Date.parse(data.created_at) || Date.now(),
               status: data.status || 'Demo',
-              writers: Array.isArray(data.writers) ? data.writers : [],
-              producers: Array.isArray(data.producers) ? data.producers : [],
-              featuredArtists: Array.isArray(data.featured_artists) ? data.featured_artists : [],
+              writers: parseArray(data.writers),
+              producers: parseArray(data.producers),
+              featuredArtists: parseArray(data.featured_artists),
             };
             setDrafts(prev => {
               if (prev.some(d => d.id === joinedProject.id)) return prev;
@@ -449,6 +465,54 @@ export function useDrafts(session: any) {
       setIsLoading(false);
     }
   }, [session, loadDrafts]);
+
+  // Fetch project metadata from Supabase when the active project opens
+  useEffect(() => {
+    if (!isCloudMode || !activeDraftId) return;
+
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(activeDraftId);
+    if (!isUuid) return;
+
+    let isMounted = true;
+
+    async function fetchProjectMetadata() {
+      try {
+        const res = await fetch(`/api/projects/${activeDraftId}`, {
+          headers: getAuthHeaders()
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data && isMounted) {
+            console.log('[useDrafts] Fetched latest project metadata via API:', data);
+            setDrafts(prev =>
+              prev.map(d =>
+                d.id === activeDraftId
+                  ? {
+                      ...d,
+                      title: data.title || d.title,
+                      status: data.status || 'Demo',
+                      writers: parseArray(data.writers),
+                      producers: parseArray(data.producers),
+                      featuredArtists: parseArray(data.featured_artists),
+                    }
+                  : d
+              )
+            );
+          }
+        } else {
+          console.error('[useDrafts] Failed to fetch project metadata via API:', res.statusText);
+        }
+      } catch (err) {
+        console.error('[useDrafts] Failed to fetch project metadata:', err);
+      }
+    }
+
+    fetchProjectMetadata();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [activeDraftId, isCloudMode, getAuthHeaders]);
 
   // Sync active draft ID to localStorage
   useEffect(() => {
@@ -528,9 +592,9 @@ export function useDrafts(session: any) {
           createdAt: Date.parse(data.created_at) || Date.now(),
           updatedAt: Date.parse(data.created_at) || Date.now(),
           status: data.status || 'Demo',
-          writers: Array.isArray(data.writers) ? data.writers : [],
-          producers: Array.isArray(data.producers) ? data.producers : [],
-          featuredArtists: Array.isArray(data.featured_artists) ? data.featured_artists : [],
+          writers: parseArray(data.writers),
+          producers: parseArray(data.producers),
+          featuredArtists: parseArray(data.featured_artists),
         };
 
         setDrafts(prev => [created, ...prev]);
@@ -602,32 +666,41 @@ export function useDrafts(session: any) {
           if (updates.producers !== undefined) dbUpdates.producers = updates.producers;
           if (updates.featuredArtists !== undefined) dbUpdates.featured_artists = updates.featuredArtists;
 
-          const { error } = await supabase
-            .from('projects')
-            .update(dbUpdates)
-            .eq('id', activeDraftId);
-          if (error) throw error;
-        } catch (e) {
+          const res = await fetch(`/api/projects/${activeDraftId}`, {
+            method: 'PATCH',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(dbUpdates)
+          });
+          if (!res.ok) {
+            const errData = await res.json();
+            console.error('Failed to update project metadata in Supabase:', errData.error);
+            alert('Failed to save to Supabase: ' + errData.error);
+          } else {
+            console.log('Successfully saved metadata to Supabase via API:', dbUpdates);
+          }
+        } catch (e: any) {
           console.error('Failed to update project metadata in Supabase:', e);
+          alert('Exception saving to Supabase: ' + e.message);
         }
       }
-    } else {
-      const currentDraft = draftsRef.current.find(d => d.id === activeDraftId);
-      if (currentDraft) {
-        const updatedLocal = {
-          ...currentDraft,
-          ...updates,
-          updatedAt: Date.now()
-        };
-        try {
-          await saveLocalDraft({
-            ...updatedLocal,
-            createdAt: new Date(updatedLocal.createdAt).toISOString(),
-            updatedAt: new Date(updatedLocal.updatedAt).toISOString()
-          });
-        } catch (e) {
-          console.error('Failed to save draft locally:', e);
-        }
+    }
+
+    // Always mirror metadata updates to local IndexedDB for immediate local hydration and offline fallback
+    const currentDraft = draftsRef.current.find(d => d.id === activeDraftId);
+    if (currentDraft) {
+      const updatedLocal = {
+        ...currentDraft,
+        ...updates,
+        updatedAt: Date.now()
+      };
+      try {
+        await saveLocalDraft({
+          ...updatedLocal,
+          createdAt: new Date(updatedLocal.createdAt).toISOString(),
+          updatedAt: new Date(updatedLocal.updatedAt).toISOString()
+        });
+      } catch (e) {
+        console.error('Failed to save draft locally:', e);
       }
     }
   }, [activeDraftId, yDoc, isCloudMode]);

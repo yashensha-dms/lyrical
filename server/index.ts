@@ -258,6 +258,116 @@ app.get('/api/projects', authenticateUser, async (req, res) => {
   }
 });
 
+// 1b. Get a single project by ID (must be owner or collaborator)
+app.get('/api/projects/:id', authenticateUser, async (req, res) => {
+  const { id } = req.params;
+  const user = (req as any).user;
+
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+  if (!isUuid) {
+    return res.status(400).json({ error: 'Invalid project ID format' });
+  }
+
+  try {
+    const { data: project, error: getError } = await supabase
+      .from('projects')
+      .select('id, title, created_at, user_id, status, writers, producers, featured_artists')
+      .eq('id', id)
+      .single();
+
+    if (getError || !project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    // Check if user is owner or collaborator
+    let hasAccess = project.user_id === user.id;
+    if (!hasAccess) {
+      const { data: collab, error: collabError } = await supabase
+        .from('project_collaborators')
+        .select('project_id')
+        .eq('project_id', id)
+        .eq('user_id', user.id)
+        .maybeSingle();
+      if (!collabError && collab) {
+        hasAccess = true;
+      }
+    }
+
+    if (!hasAccess) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    res.json(project);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 1c. Update project metadata (must be owner or collaborator)
+app.patch('/api/projects/:id', authenticateUser, async (req, res) => {
+  const { id } = req.params;
+  const user = (req as any).user;
+  const { title, status, writers, producers, featured_artists } = req.body;
+
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id) ||
+                 /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+  if (!isUuid) {
+    return res.status(400).json({ error: 'Invalid project ID format' });
+  }
+
+  try {
+    // Check if user is owner or collaborator
+    const { data: project, error: getError } = await supabase
+      .from('projects')
+      .select('id, user_id')
+      .eq('id', id)
+      .single();
+
+    if (getError || !project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    let hasAccess = project.user_id === user.id;
+    if (!hasAccess) {
+      const { data: collab, error: collabError } = await supabase
+        .from('project_collaborators')
+        .select('project_id')
+        .eq('project_id', id)
+        .eq('user_id', user.id)
+        .maybeSingle();
+      if (!collabError && collab) {
+        hasAccess = true;
+      }
+    }
+
+    if (!hasAccess) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    const dbUpdates: any = {};
+    if (title !== undefined) dbUpdates.title = title;
+    if (status !== undefined) dbUpdates.status = status;
+    if (writers !== undefined) dbUpdates.writers = writers;
+    if (producers !== undefined) dbUpdates.producers = producers;
+    if (featured_artists !== undefined) dbUpdates.featured_artists = featured_artists;
+
+    const { data: updatedProject, error: updateError } = await supabase
+      .from('projects')
+      .update(dbUpdates)
+      .eq('id', id)
+      .select('id, title, created_at, user_id, status, writers, producers, featured_artists')
+      .single();
+
+    if (updateError) throw updateError;
+
+    res.json(updatedProject);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+
+
 // 2. Create a new project
 app.post('/api/projects', authenticateUser, async (req, res) => {
   const { title } = req.body;

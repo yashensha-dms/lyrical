@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { X, Check, Edit2, Plus, Save } from 'lucide-react';
 import * as Select from '@radix-ui/react-select';
+import { supabase } from '../utils/supabaseClient';
 import type { Draft } from '../hooks/useDrafts';
 
 interface ProjectInfoPanelProps {
@@ -119,15 +120,59 @@ export const ProjectInfoPanel: React.FC<ProjectInfoPanelProps> = ({
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const titleInputRef = useRef<HTMLInputElement>(null);
 
-  // Sync shadow state when active draft changes (e.g. switching projects)
+  // Load project metadata from REST API when project opens
   useEffect(() => {
+    let isMounted = true;
+
+    async function loadInfo() {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const token = session?.access_token;
+        if (!token) return;
+
+        const res = await fetch(`/api/projects/${activeDraft.id}`, {
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (isMounted) {
+            setTitle(data.title || '');
+            setStatus(data.status || 'Demo');
+            setWriters(Array.isArray(data.writers) ? data.writers : []);
+            setProducers(Array.isArray(data.producers) ? data.producers : []);
+            setFeaturedArtists(Array.isArray(data.featured_artists) ? data.featured_artists : []);
+            setIsDirty(false);
+          }
+        }
+      } catch (err) {
+        console.error('Error fetching project metadata in panel:', err);
+      }
+    }
+
+    // Set initial loading values from prop
     setTitle(activeDraft.title);
     setStatus(activeDraft.status || 'Demo');
     setWriters(activeDraft.writers || []);
     setProducers(activeDraft.producers || []);
     setFeaturedArtists(activeDraft.featuredArtists || []);
     setIsDirty(false);
-  }, [activeDraft.id]); // only re-sync on project switch
+
+    loadInfo();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [activeDraft.id]);
+
+  // Sync title changes from activeDraft (Yjs collaboration)
+  useEffect(() => {
+    if (!isEditingTitle && !isDirty) {
+      setTitle(activeDraft.title);
+    }
+  }, [activeDraft.title, isEditingTitle, isDirty]);
 
   useEffect(() => {
     if (isEditingTitle && titleInputRef.current) {

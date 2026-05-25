@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, CornerDownRight } from 'lucide-react';
+import { Plus, Trash2, CornerDownRight, Search } from 'lucide-react';
 import * as AlertDialog from '@radix-ui/react-alert-dialog';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import { supabase } from '../utils/supabaseClient';
@@ -24,6 +24,7 @@ export const PhraseCatcher: React.FC<PhraseCatcherProps> = ({
   const [newPhraseText, setNewPhraseText] = useState('');
   const [deletingPhraseId, setDeletingPhraseId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Fetch phrases on mount
   useEffect(() => {
@@ -130,6 +131,10 @@ export const PhraseCatcher: React.FC<PhraseCatcherProps> = ({
     }
   };
 
+  const filteredPhrases = phrases.filter((phrase) =>
+    phrase.content.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
   return (
     <div className="flex-1 flex flex-col min-h-0 bg-transparent">
       {/* Phrase Input */}
@@ -152,6 +157,21 @@ export const PhraseCatcher: React.FC<PhraseCatcherProps> = ({
         </button>
       </form>
 
+      {/* Search Input */}
+      <div className="px-4 pb-3 pt-1 border-b border-paper-darker select-none flex items-center gap-2 relative">
+        <div className="relative flex-1">
+          <input
+            type="text"
+            placeholder="Search phrases..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            spellCheck="false"
+            className="w-full bg-paper border border-paper-darker rounded pl-8 pr-3 py-1.5 text-xs text-ink placeholder-ink-light focus:outline-none focus:border-terracotta transition select-text"
+          />
+          <Search className="w-3.5 h-3.5 text-ink-light absolute left-2.5 top-1/2 -translate-y-1/2" />
+        </div>
+      </div>
+
       {/* Phrases List */}
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
         {isLoading ? (
@@ -164,8 +184,14 @@ export const PhraseCatcher: React.FC<PhraseCatcherProps> = ({
               Scratchpad is empty. Catch your first lyric snippet above.
             </p>
           </div>
+        ) : filteredPhrases.length === 0 ? (
+          <div className="text-center py-12 select-none">
+            <p className="text-xs text-ink-muted font-serif italic">
+              No matching phrases found.
+            </p>
+          </div>
         ) : (
-          phrases.map((phrase) => (
+          filteredPhrases.map((phrase) => (
             <div
               key={phrase.id}
               className="bg-paper border border-paper-darker rounded-lg p-3 relative flex flex-col justify-between group hover:border-terracotta/20 transition-all duration-200 card-warm"
