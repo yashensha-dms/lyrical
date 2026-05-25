@@ -1,8 +1,8 @@
-import { FileText, Settings, PanelLeftClose, PanelLeft } from 'lucide-react';
+import { Settings, PanelLeftClose, PanelLeft } from 'lucide-react';
 
 interface ActivityBarProps {
-  activePanel: 'explorer' | 'settings';
-  setActivePanel: (panel: 'explorer' | 'settings') => void;
+  activePanel: 'settings';
+  setActivePanel: (panel: 'settings') => void;
   isSidebarOpen: boolean;
   setIsSidebarOpen: (open: boolean) => void;
 }
@@ -13,7 +13,7 @@ export const ActivityBar: React.FC<ActivityBarProps> = ({
   isSidebarOpen,
   setIsSidebarOpen,
 }) => {
-  const handleItemClick = (panel: 'explorer' | 'settings') => {
+  const handleItemClick = (panel: 'settings') => {
     if (activePanel === panel && isSidebarOpen) {
       setIsSidebarOpen(false);
     } else {
@@ -23,7 +23,6 @@ export const ActivityBar: React.FC<ActivityBarProps> = ({
   };
 
   const navItems = [
-    { id: 'explorer' as const, label: 'Drafts Explorer', icon: FileText },
     { id: 'settings' as const, label: 'Workspace Settings', icon: Settings },
   ];
 

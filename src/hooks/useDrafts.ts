@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import * as Y from 'yjs';
 import { WebsocketProvider } from 'y-websocket';
 import { getLocalDrafts, saveLocalDraft, deleteLocalDraft } from '../utils/indexedDb';
+import { supabase } from '../utils/supabaseClient';
+
 
 export interface Draft {
   id: string;
@@ -52,19 +54,36 @@ export function useDrafts(session: any) {
   const [provider, setProvider] = useState<WebsocketProvider | null>(null);
   const wsRoomRef = useRef<string | null>(null);
 
-  const [penName, setPenNameState] = useState<string>(() => localStorage.getItem('lyrical_pen_name') || '');
+  const [penName, setPenNameState] = useState<string>(() => localStorage.getItem('lyrical_pen_name') || session?.user?.user_metadata?.pen_name || '');
 
-  const setPenName = useCallback((name: string) => {
+  useEffect(() => {
+    if (session?.user?.user_metadata?.pen_name && !localStorage.getItem('lyrical_pen_name')) {
+      setPenNameState(session.user.user_metadata.pen_name);
+    }
+  }, [session]);
+
+  const setPenName = useCallback(async (name: string) => {
     setPenNameState(name);
-    if (name.trim()) {
-      localStorage.setItem('lyrical_pen_name', name.trim());
+    const trimmed = name.trim();
+    if (trimmed) {
+      localStorage.setItem('lyrical_pen_name', trimmed);
+      if (session) {
+        await supabase.auth.updateUser({
+          data: { pen_name: trimmed }
+        });
+      }
     } else {
       localStorage.removeItem('lyrical_pen_name');
+      if (session) {
+        await supabase.auth.updateUser({
+          data: { pen_name: null }
+        });
+      }
     }
-  }, []);
+  }, [session]);
 
   const getDisplayName = useCallback(() => {
-    const savedPenName = localStorage.getItem('lyrical_pen_name');
+    const savedPenName = localStorage.getItem('lyrical_pen_name') || session?.user?.user_metadata?.pen_name;
     if (savedPenName && savedPenName.trim()) {
       return savedPenName.trim();
     }
@@ -553,6 +572,38 @@ export function useDrafts(session: any) {
     await deleteLocalDraft(id);
   }, [activeDraftId, isCloudMode, getAuthHeaders]);
 
+  const renameDraft = useCallback(async (id: string, newTitle: string) => {
+    setDrafts(prev => prev.map(d => d.id === id ? { ...d, title: newTitle, updatedAt: Date.now() } : d));
+
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+    if (isCloudMode && isUuid) {
+      try {
+        const { error } = await supabase
+          .from('projects')
+          .update({ title: newTitle })
+          .eq('id', id);
+        if (error) throw error;
+      } catch (e) {
+        console.error('Failed to rename on cloud:', e);
+      }
+    } else {
+      try {
+        const local = draftsRef.current.find(d => d.id === id);
+        if (local) {
+          await saveLocalDraft({
+            ...local,
+            title: newTitle,
+            createdAt: new Date(local.createdAt).toISOString(),
+            updatedAt: new Date().toISOString()
+          });
+        }
+      } catch (e) {
+        console.error('Failed to rename locally:', e);
+      }
+    }
+  }, [isCloudMode]);
+
+
   // Legacy/No-op now
   const syncLocalToCloud = useCallback(async () => {}, []);
   const exportAllDrafts = useCallback(() => {}, []);
@@ -579,6 +630,7 @@ export function useDrafts(session: any) {
     createDraft,
     updateActiveDraft,
     deleteDraft,
+    renameDraft,
     syncLocalToCloud,
     exportAllDrafts,
     importDrafts,

@@ -10,7 +10,6 @@ type MobileTab = 'write' | 'library';
 
 interface MobileLayoutProps {
   // App state
-  drafts: Draft[];
   activeDraft: Draft | null;
   healthStatus: 'checking' | 'connected' | 'disconnected';
   useLocalMode: boolean;
@@ -18,10 +17,8 @@ interface MobileLayoutProps {
   yDoc?: Y.Doc | null;
   provider?: WebsocketProvider | null;
   // Actions
-  selectDraft: (id: string) => void;
   createDraft: (title?: string) => Promise<Draft>;
   updateActiveDraft: (updates: Partial<Omit<Draft, 'id' | 'createdAt'>>) => void;
-  deleteDraft: (id: string) => void;
   exportAllDrafts: () => void;
   importDrafts: (jsonString: string) => boolean;
   syncLocalToCloud: () => void;
@@ -36,17 +33,14 @@ interface MobileLayoutProps {
 }
 
 export const MobileLayout: React.FC<MobileLayoutProps> = ({
-  drafts,
   activeDraft,
   healthStatus,
   useLocalMode,
   isCloudMode,
   yDoc,
   provider,
-  selectDraft,
   createDraft,
   updateActiveDraft,
-  deleteDraft,
   exportAllDrafts,
   importDrafts,
   syncLocalToCloud,
@@ -60,13 +54,7 @@ export const MobileLayout: React.FC<MobileLayoutProps> = ({
   googleDefaultName,
 }) => {
   const [activeTab, setActiveTab] = useState<MobileTab>('write');
-  const [activePanel, setActivePanel] = useState<'explorer' | 'settings'>('explorer');
-
-  // When a draft is selected on Library tab, switch to Write
-  const handleSelectDraft = (id: string) => {
-    selectDraft(id);
-    setActiveTab('write');
-  };
+  const [activePanel] = useState<'settings'>('settings');
 
   // When a new draft is created, switch to Write
   const handleCreateDraft = (title?: string) => {
@@ -77,12 +65,6 @@ export const MobileLayout: React.FC<MobileLayoutProps> = ({
   const tabs: { id: MobileTab; label: string; Icon: React.FC<{ className?: string }> }[] = [
     { id: 'write',   label: 'Write',   Icon: ({ className }) => <PenLine className={className} /> },
     { id: 'library', label: 'Library', Icon: ({ className }) => <Library className={className} /> },
-  ];
-
-  // Panel tabs for Library
-  const librarySubTabs: { id: 'explorer' | 'settings'; label: string }[] = [
-    { id: 'explorer',  label: 'Songs' },
-    { id: 'settings',  label: 'Settings' },
   ];
 
   return (
@@ -142,30 +124,6 @@ export const MobileLayout: React.FC<MobileLayoutProps> = ({
         </div>
       )}
 
-      {/* ── Library Sub-tab Strip (only when Library tab active) ── */}
-      {activeTab === 'library' && (
-        <div className={`flex overflow-x-auto bg-paper-dark border-b border-paper-darker flex-shrink-0 transition-opacity duration-500 ${
-          subconsciousActive ? 'opacity-10 pointer-events-none' : ''
-        }`} style={{ WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none' }}>
-          {librarySubTabs.map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => setActivePanel(tab.id)}
-              className={`flex-shrink-0 px-4 py-2.5 text-xs font-semibold tracking-wide transition-all duration-200 relative cursor-pointer ${
-                activePanel === tab.id
-                  ? 'text-terracotta'
-                  : 'text-ink-muted'
-              }`}
-            >
-              {tab.label}
-              {activePanel === tab.id && (
-                <span className="absolute bottom-0 left-2 right-2 h-[2px] bg-terracotta rounded-t-full" />
-              )}
-            </button>
-          ))}
-        </div>
-      )}
-
       {/* ── Main Panel Area ── */}
       <main className="flex-1 min-h-0 w-full overflow-hidden relative">
 
@@ -218,12 +176,6 @@ export const MobileLayout: React.FC<MobileLayoutProps> = ({
           <div className="w-full h-full">
             <Sidebar
               activePanel={activePanel}
-              drafts={drafts}
-              activeDraft={activeDraft}
-              selectDraft={handleSelectDraft}
-              createDraft={handleCreateDraft}
-              updateActiveDraft={updateActiveDraft}
-              deleteDraft={deleteDraft}
               exportAllDrafts={exportAllDrafts}
               importDrafts={importDrafts}
               setIsSidebarOpen={() => {}}

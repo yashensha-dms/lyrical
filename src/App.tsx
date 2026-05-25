@@ -47,6 +47,7 @@ function App() {
     createDraft,
     updateActiveDraft,
     deleteDraft,
+    renameDraft,
     syncLocalToCloud,
     exportAllDrafts,
     importDrafts,
@@ -61,7 +62,7 @@ function App() {
   const isMobile = useIsMobile();
 
   // Layout panel states
-  const [activePanel, setActivePanel] = useState<'explorer' | 'settings'>('explorer');
+  const [activePanel, setActivePanel] = useState<'settings'>('settings');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
   // Subconscious writing mode
@@ -150,22 +151,21 @@ function App() {
           healthStatus={healthStatus}
           onSelectDraft={handleSelectDraft}
           onCreateDraft={() => handleCreateDraft()}
+          onDeleteDraft={handleDeleteDraft}
+          onRenameDraft={renameDraft}
         />
       );
     }
     return (
       <MobileLayout
-        drafts={drafts}
         activeDraft={activeDraft}
         healthStatus={healthStatus}
         useLocalMode={useLocalMode}
         isCloudMode={isCloudMode}
         yDoc={yDoc}
         provider={provider}
-        selectDraft={handleSelectDraft}
         createDraft={handleCreateDraft}
         updateActiveDraft={updateActiveDraft}
-        deleteDraft={handleDeleteDraft}
         exportAllDrafts={exportAllDrafts}
         importDrafts={importDrafts}
         syncLocalToCloud={syncLocalToCloud}
@@ -190,6 +190,8 @@ function App() {
         healthStatus={healthStatus}
         onSelectDraft={handleSelectDraft}
         onCreateDraft={() => handleCreateDraft()}
+        onDeleteDraft={handleDeleteDraft}
+        onRenameDraft={renameDraft}
       />
     );
   }
@@ -293,12 +295,6 @@ function App() {
           }`}>
             <Sidebar
               activePanel={activePanel}
-              drafts={drafts}
-              activeDraft={activeDraft}
-              selectDraft={handleSelectDraft}
-              createDraft={handleCreateDraft}
-              updateActiveDraft={updateActiveDraft}
-              deleteDraft={handleDeleteDraft}
               exportAllDrafts={exportAllDrafts}
               importDrafts={importDrafts}
               setIsSidebarOpen={setIsSidebarOpen}

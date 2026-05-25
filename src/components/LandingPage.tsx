@@ -1,5 +1,8 @@
-import React from 'react';
-import { Plus, Music, Clock, Cloud, HardDrive } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Plus, Music, Clock, Cloud, HardDrive, MoreHorizontal } from 'lucide-react';
+import * as ContextMenu from '@radix-ui/react-context-menu';
+import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
+import * as AlertDialog from '@radix-ui/react-alert-dialog';
 import type { Draft } from '../hooks/useDrafts';
 
 interface LandingPageProps {
@@ -8,6 +11,8 @@ interface LandingPageProps {
   healthStatus: 'checking' | 'connected' | 'disconnected';
   onSelectDraft: (id: string) => void;
   onCreateDraft: () => void;
+  onDeleteDraft: (id: string) => void;
+  onRenameDraft: (id: string, newTitle: string) => void;
 }
 
 function timeAgo(ts: number): string {
@@ -31,9 +36,44 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   healthStatus,
   onSelectDraft,
   onCreateDraft,
+  onDeleteDraft,
+  onRenameDraft,
 }) => {
+  const [renamingDraftId, setRenamingDraftId] = useState<string | null>(null);
+  const [renameTitle, setRenameTitle] = useState('');
+  const [deletingDraftId, setDeletingDraftId] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (toastMessage) {
+      const timer = setTimeout(() => setToastMessage(null), 2500);
+      return () => clearTimeout(timer);
+    }
+  }, [toastMessage]);
+
+  const handleStartRename = (draft: Draft) => {
+    setRenamingDraftId(draft.id);
+    setRenameTitle(draft.title || 'Untitled Song');
+  };
+
+  const handleRenameSubmit = (id: string) => {
+    if (renameTitle.trim() && renameTitle.trim() !== drafts.find(d => d.id === id)?.title) {
+      onRenameDraft(id, renameTitle.trim());
+    }
+    setRenamingDraftId(null);
+  };
+
+  const handleShare = (id: string) => {
+    const shareUrl = `${window.location.origin}/draft/${id}`;
+    navigator.clipboard.writeText(shareUrl).then(() => {
+      setToastMessage('Invite link copied to clipboard!');
+    }).catch(err => {
+      console.error('Failed to copy share link:', err);
+    });
+  };
+
   return (
-    <div className="w-screen h-screen bg-paper flex flex-col overflow-hidden">
+    <div className="w-screen h-screen bg-paper flex flex-col overflow-hidden select-none">
       {/* Top bar */}
       <header className="h-12 border-b border-paper-darker flex items-center justify-between px-6 flex-shrink-0 bg-paper">
         <div className="flex items-center gap-2">
@@ -92,37 +132,171 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               <p className="text-sm">No songs yet. Create your first one above.</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {drafts.map((draft) => (
-                <button
-                  key={draft.id}
-                  id={`landing-draft-${draft.id}`}
-                  onClick={() => onSelectDraft(draft.id)}
-                  className="group text-left bg-paper border border-paper-darker rounded-xl p-4 hover:border-terracotta/40 hover:bg-paper-dark transition-all duration-150 active:scale-[0.99] card-warm cursor-pointer"
-                >
-                  <div className="flex items-start justify-between gap-2 mb-2">
-                    <h3 className="text-sm font-semibold text-ink leading-snug line-clamp-2 group-hover:text-terracotta transition-colors">
-                      {draft.title || 'Untitled Song'}
-                    </h3>
-                    <span className="text-[10px] text-ink-light font-mono flex-shrink-0 flex items-center gap-0.5 mt-0.5">
-                      <Clock className="w-2.5 h-2.5" />
-                      {timeAgo(draft.updatedAt)}
-                    </span>
-                  </div>
+                <ContextMenu.Root key={draft.id}>
+                  <ContextMenu.Trigger asChild>
+                    <div
+                      id={`landing-draft-${draft.id}`}
+                      onClick={() => {
+                        if (renamingDraftId !== draft.id) {
+                          onSelectDraft(draft.id);
+                        }
+                      }}
+                      className="group text-left bg-paper border border-paper-darker hover:border-terracotta/30 hover:bg-paper-dark/30 rounded-xl p-5 transition-all duration-200 card-warm cursor-pointer relative flex flex-col justify-between min-h-[130px]"
+                    >
+                      <div>
+                        <div className="flex items-start justify-between gap-4 mb-2.5">
+                          {renamingDraftId === draft.id ? (
+                            <input
+                              type="text"
+                              value={renameTitle}
+                              onChange={(e) => setRenameTitle(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  handleRenameSubmit(draft.id);
+                                } else if (e.key === 'Escape') {
+                                  setRenamingDraftId(null);
+                                }
+                              }}
+                              onClick={(e) => e.stopPropagation()}
+                              className="flex-1 bg-transparent text-sm font-semibold text-ink border-b border-terracotta focus:outline-none py-0.5"
+                              autoFocus
+                              onBlur={() => handleRenameSubmit(draft.id)}
+                            />
+                          ) : (
+                            <h3 className="text-sm font-bold text-ink leading-snug line-clamp-2 group-hover:text-terracotta transition-colors flex-1 pr-6">
+                              {draft.title || 'Untitled Song'}
+                            </h3>
+                          )}
+                          
+                          {/* Three dot dropdown button */}
+                          <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+                            <DropdownMenu.Root>
+                              <DropdownMenu.Trigger asChild>
+                                <button
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="w-7 h-7 flex items-center justify-center rounded-md border border-paper-darker bg-paper hover:bg-paper-active text-ink-muted hover:text-ink transition cursor-pointer"
+                                >
+                                  <MoreHorizontal className="w-4 h-4" />
+                                </button>
+                              </DropdownMenu.Trigger>
+                              <DropdownMenu.Portal>
+                                <DropdownMenu.Content
+                                  className="radix-menu-content"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <DropdownMenu.Item
+                                    className="radix-menu-item"
+                                    onSelect={() => handleStartRename(draft)}
+                                  >
+                                    Rename
+                                  </DropdownMenu.Item>
+                                  <DropdownMenu.Item
+                                    className="radix-menu-item text-terracotta hover:bg-terracotta-light"
+                                    onSelect={() => setDeletingDraftId(draft.id)}
+                                  >
+                                    Delete
+                                  </DropdownMenu.Item>
+                                  <DropdownMenu.Item
+                                    className="radix-menu-item"
+                                    onSelect={() => handleShare(draft.id)}
+                                  >
+                                    Share
+                                  </DropdownMenu.Item>
+                                </DropdownMenu.Content>
+                              </DropdownMenu.Portal>
+                            </DropdownMenu.Root>
+                          </div>
+                        </div>
 
-                  {draft.content && (
-                    <p className="text-[11px] text-ink-muted font-serif italic leading-relaxed line-clamp-2 mb-3">
-                      {draft.content.replace(/^\[.*?\]\n?/gm, '').trim().split('\n')[0]}
-                    </p>
-                  )}
-                  <div className="flex items-center gap-3 text-[10px] text-ink-light font-mono">
-                    <span>{wordCount(draft.content)} words</span>
-                  </div>                </button>
+                        {draft.content && (
+                          <p className="text-[11px] text-ink-muted font-serif italic leading-relaxed line-clamp-2 mb-3 pr-2">
+                            {draft.content.replace(/^\[.*?\]\n?/gm, '').trim().split('\n')[0]}
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="flex items-center justify-between text-[10px] text-ink-light font-mono mt-2 pt-2 border-t border-paper-darker/40">
+                        <span>{wordCount(draft.content)} words</span>
+                        <span className="flex items-center gap-1">
+                          <Clock className="w-3 h-3" />
+                          {timeAgo(draft.updatedAt)}
+                        </span>
+                      </div>
+                    </div>
+                  </ContextMenu.Trigger>
+                  
+                  {/* Context menu overlay */}
+                  <ContextMenu.Portal>
+                    <ContextMenu.Content className="radix-menu-content">
+                      <ContextMenu.Item
+                        className="radix-menu-item"
+                        onSelect={() => handleStartRename(draft)}
+                      >
+                        Rename
+                      </ContextMenu.Item>
+                      <ContextMenu.Item
+                        className="radix-menu-item text-terracotta hover:bg-terracotta-light"
+                        onSelect={() => setDeletingDraftId(draft.id)}
+                      >
+                        Delete
+                      </ContextMenu.Item>
+                      <ContextMenu.Item
+                        className="radix-menu-item"
+                        onSelect={() => handleShare(draft.id)}
+                      >
+                        Share
+                      </ContextMenu.Item>
+                    </ContextMenu.Content>
+                  </ContextMenu.Portal>
+                </ContextMenu.Root>
               ))}
             </div>
           )}
         </div>
       </main>
+
+      {/* Delete confirmation dialog */}
+      <AlertDialog.Root open={!!deletingDraftId} onOpenChange={(open: boolean) => !open && setDeletingDraftId(null)}>
+        <AlertDialog.Portal>
+          <AlertDialog.Overlay className="radix-overlay" />
+          <AlertDialog.Content className="radix-dialog-content">
+            <AlertDialog.Title className="text-sm font-bold text-ink mb-2">Delete Song</AlertDialog.Title>
+            <AlertDialog.Description className="text-xs text-ink-muted mb-5">
+              Are you sure you want to delete this song? This action cannot be undone and will remove it permanently.
+            </AlertDialog.Description>
+            <div className="flex justify-end gap-2">
+              <AlertDialog.Cancel asChild>
+                <button className="px-3.5 py-1.5 border border-paper-darker rounded-md text-xs font-semibold text-ink-muted hover:bg-paper-active transition cursor-pointer">
+                  Cancel
+                </button>
+              </AlertDialog.Cancel>
+              <AlertDialog.Action asChild>
+                <button
+                  onClick={() => {
+                    if (deletingDraftId) {
+                      onDeleteDraft(deletingDraftId);
+                      setDeletingDraftId(null);
+                    }
+                  }}
+                  className="px-3.5 py-1.5 bg-terracotta hover:bg-terracotta-hover text-white rounded-md text-xs font-semibold transition cursor-pointer"
+                >
+                  Delete
+                </button>
+              </AlertDialog.Action>
+            </div>
+          </AlertDialog.Content>
+        </AlertDialog.Portal>
+      </AlertDialog.Root>
+
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div className="fixed bottom-6 right-6 bg-ink text-paper border border-paper-darker shadow-paper-md rounded-lg px-4 py-3 flex items-center gap-2.5 z-50 text-xs font-medium animate-[radix-slide-up_150ms_ease-out]">
+          <div className="w-1.5 h-1.5 rounded-full bg-terracotta"></div>
+          <span>{toastMessage}</span>
+        </div>
+      )}
     </div>
   );
 };
