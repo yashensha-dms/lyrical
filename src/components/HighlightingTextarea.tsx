@@ -221,115 +221,7 @@ const lyricDecorationsField = StateField.define<DecorationSet>({
   }
 });
 
-interface SectionInfo {
-  lineNum: number;
-  originalText: string;
-  tagContent: string;
-  baseName: string;
-  specifiedNum: number | null;
-  contentLines: string[];
-  contentHash: string;
-}
 
-// Enforce tag naming conventions (auto-correcting duplicate tag names)
-function enforceTagConventions(view: EditorView) {
-  const doc = view.state.doc;
-  const sections: SectionInfo[] = [];
-  let currentSection: Omit<SectionInfo, 'contentLines' | 'contentHash'> & { contentLines: string[] } | null = null;
-
-  for (let i = 1; i <= doc.lines; i++) {
-    const line = doc.line(i);
-    const text = line.text.trim();
-    const tagMatch = text.match(/^\[(.*?)\]$/);
-
-    if (tagMatch) {
-      if (currentSection) {
-        sections.push({
-          ...currentSection,
-          contentHash: currentSection.contentLines.join('\n').trim(),
-        });
-      }
-      
-      const tagContent = tagMatch[1].trim();
-      const numMatch = tagContent.match(/^(.*?)(?:\s+(\d+))?$/);
-      const baseName = numMatch ? numMatch[1].trim() : tagContent;
-      const specifiedNum = numMatch && numMatch[2] ? parseInt(numMatch[2]) : null;
-
-      currentSection = {
-        lineNum: i,
-        originalText: line.text,
-        tagContent,
-        baseName,
-        specifiedNum,
-        contentLines: [],
-      };
-    } else {
-      if (currentSection) {
-        currentSection.contentLines.push(line.text);
-      }
-    }
-  }
-
-  if (currentSection) {
-    sections.push({
-      ...currentSection,
-      contentHash: currentSection.contentLines.join('\n').trim(),
-    });
-  }
-
-  // Group sections by baseName
-  const groups: { [baseName: string]: SectionInfo[] } = {};
-  sections.forEach(sec => {
-    if (!groups[sec.baseName]) {
-      groups[sec.baseName] = [];
-    }
-    groups[sec.baseName].push(sec);
-  });
-
-  const changes: { from: number, to: number, insert: string }[] = [];
-
-  // Analyze each group
-  Object.entries(groups).forEach(([baseName, groupSecs]) => {
-    const independentSecs: SectionInfo[] = [];
-
-    groupSecs.forEach((sec) => {
-      // Compare content with independent sections found so far
-      let matchIndex = -1;
-      for (let idx = 0; idx < independentSecs.length; idx++) {
-        if (independentSecs[idx].contentHash === sec.contentHash) {
-          matchIndex = idx;
-          break;
-        }
-      }
-
-      let correctTag: string;
-      if (matchIndex >= 0) {
-        // It's a reference! Match the tag of the matched independent section.
-        correctTag = matchIndex === 0 ? `[${baseName}]` : `[${baseName} ${matchIndex + 1}]`;
-      } else {
-        // It's a new independent section!
-        independentSecs.push(sec);
-        const newIndex = independentSecs.length - 1;
-        correctTag = newIndex === 0 ? `[${baseName}]` : `[${baseName} ${newIndex + 1}]`;
-      }
-
-      if (sec.originalText.trim() !== correctTag) {
-        const line = doc.line(sec.lineNum);
-        changes.push({
-          from: line.from,
-          to: line.to,
-          insert: correctTag
-        });
-      }
-    });
-  });
-
-  if (changes.length > 0) {
-    view.dispatch({
-      changes
-    });
-  }
-}
 
 
 
@@ -358,7 +250,6 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
 }, ref) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
-  const isCorrectingRef = useRef(false);
   const isLineCopyRef = useRef(false);
   const lastCopiedLineTextRef = useRef("");
 
@@ -908,19 +799,6 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
         }
         if (update.docChanged) {
           latestRef.current.onChange(update.state.doc.toString());
-          
-          if (!hideGutters && !isCorrectingRef.current) {
-            Promise.resolve().then(() => {
-              isCorrectingRef.current = true;
-              try {
-                enforceTagConventions(update.view);
-              } catch (e) {
-                console.error(e);
-              } finally {
-                isCorrectingRef.current = false;
-              }
-            });
-          }
         }
         if (latestRef.current.onScroll && update.geometryChanged) {
           const mockEvent = {
