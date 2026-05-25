@@ -124,3 +124,45 @@ textarea::selection {
   margin-left: -12px !important;
 }
 
+/* --- Radix Base Styling Support --- */
+
+/* Keyframe Animations for Radix overlays and popovers */
+@keyframes radix-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes radix-fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+@keyframes radix-slide-up {
+  from { transform: translateY(8px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+/* Base style utilities for Popovers, Dropdowns, and Dialogs */
+.radix-menu-content {
+  @apply bg-paper border border-paper-darker rounded-md shadow-paper-md p-1 min-w-[200px] z-50;
+  @apply focus:outline-none;
+  /* Smooth exit/entrance animations using Tailwind v4 state variants */
+  @apply data-[state=open]:animate-[radix-fade-in_150ms_ease-out] data-[state=closed]:animate-[radix-fade-out_100ms_ease-in];
+}
+
+.radix-menu-item {
+  @apply flex items-center justify-between px-2.5 py-1.5 text-sm text-ink rounded-sm cursor-pointer select-none outline-none;
+  @apply data-[highlighted]:bg-paper-active data-[highlighted]:text-ink;
+  @apply data-[disabled]:opacity-40 data-[disabled]:cursor-not-allowed;
+}
+
+.radix-overlay {
+  @apply fixed inset-0 bg-ink/10 backdrop-blur-[1px] z-50;
+  @apply data-[state=open]:animate-[radix-fade-in_200ms_ease-out] data-[state=closed]:animate-[radix-fade-out_150ms_ease-in];
+}
+
+.radix-dialog-content {
+  @apply fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md bg-paper border border-paper-darker rounded-lg shadow-paper-md p-6 z-50;
+  @apply focus:outline-none;
+  @apply data-[state=open]:animate-[radix-slide-up_200ms_ease-out] data-[state=closed]:animate-[radix-fade-out_150ms_ease-in];
+}
+
+
