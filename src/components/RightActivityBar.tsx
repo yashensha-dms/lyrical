@@ -1,15 +1,28 @@
 import React from 'react';
-import { Info, PanelLeftClose, PanelLeft } from 'lucide-react';
+import { Info, PanelLeftClose, PanelLeft, BookOpen } from 'lucide-react';
 
 interface RightActivityBarProps {
   isSidebarOpen: boolean;
   setIsSidebarOpen: (open: boolean) => void;
+  activePanel: 'info' | 'scrapbook';
+  setActivePanel: (panel: 'info' | 'scrapbook') => void;
 }
 
 export const RightActivityBar: React.FC<RightActivityBarProps> = ({
   isSidebarOpen,
   setIsSidebarOpen,
+  activePanel,
+  setActivePanel,
 }) => {
+  const handleItemClick = (panel: 'info' | 'scrapbook') => {
+    if (activePanel === panel && isSidebarOpen) {
+      setIsSidebarOpen(false);
+    } else {
+      setActivePanel(panel);
+      setIsSidebarOpen(true);
+    }
+  };
+
   return (
     <div className="w-14 h-full bg-paper-dark border-l border-paper-darker flex flex-col justify-between items-center py-4 flex-shrink-0 z-10 select-none">
       <div className="flex flex-col items-center gap-4 w-full">
@@ -34,9 +47,9 @@ export const RightActivityBar: React.FC<RightActivityBarProps> = ({
 
         {/* Activity Buttons */}
         <button
-          onClick={() => setIsSidebarOpen(!isSidebarOpen || true)}
+          onClick={() => handleItemClick('info')}
           className={`w-10 h-10 rounded-lg flex items-center justify-center transition-all duration-200 cursor-pointer ${
-            isSidebarOpen
+            isSidebarOpen && activePanel === 'info'
               ? 'bg-paper-darker text-terracotta shadow-inner'
               : 'text-ink-muted hover:text-ink hover:bg-paper-active/50'
           }`}
@@ -44,6 +57,19 @@ export const RightActivityBar: React.FC<RightActivityBarProps> = ({
           aria-label="Project Info"
         >
           <Info className="w-5 h-5 stroke-[1.5]" />
+        </button>
+
+        <button
+          onClick={() => handleItemClick('scrapbook')}
+          className={`w-10 h-10 rounded-lg flex items-center justify-center transition-all duration-200 cursor-pointer ${
+            isSidebarOpen && activePanel === 'scrapbook'
+              ? 'bg-paper-darker text-terracotta shadow-inner'
+              : 'text-ink-muted hover:text-ink hover:bg-paper-active/50'
+          }`}
+          title="Scrapbook"
+          aria-label="Scrapbook"
+        >
+          <BookOpen className="w-5 h-5 stroke-[1.5]" />
         </button>
       </div>
 

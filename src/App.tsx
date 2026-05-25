@@ -68,6 +68,7 @@ function App() {
   const [refreshGraveyardCount, setRefreshGraveyardCount] = useState(0);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(true);
+  const [activeRightPanel, setActiveRightPanel] = useState<'info' | 'scrapbook'>('info');
 
   const editorRef = useRef<any>(null);
 
@@ -335,6 +336,7 @@ function App() {
                   activeDraft={activeDraft}
                   updateActiveDraft={updateActiveDraft}
                   setIsSidebarOpen={setIsRightSidebarOpen}
+                  activePanel={activeRightPanel}
                 />
               </div>
             )}
@@ -344,6 +346,8 @@ function App() {
               <RightActivityBar
                 isSidebarOpen={isRightSidebarOpen}
                 setIsSidebarOpen={setIsRightSidebarOpen}
+                activePanel={activeRightPanel}
+                setActivePanel={setActiveRightPanel}
               />
             </div>
           </>
