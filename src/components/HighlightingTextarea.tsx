@@ -571,6 +571,17 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
       if (viewRef.current) {
         viewRef.current.scrollDOM.scrollTop = val;
       }
+    },
+    insertText: (text: string) => {
+      if (!viewRef.current) return;
+      const view = viewRef.current;
+      const { from, to } = view.state.selection.main;
+      view.dispatch({
+        changes: { from, to, insert: text },
+        selection: { anchor: from + text.length },
+        scrollIntoView: true
+      });
+      view.focus();
     }
   } as unknown as HTMLTextAreaElement));
 

@@ -23,6 +23,7 @@ interface NotepadProps {
   simplicityAlerts?: { word: string; index: number }[];
   yDoc?: Y.Doc | null;
   provider?: WebsocketProvider | null;
+  editorRef?: React.RefObject<any>;
 }
 
 export const Notepad: React.FC<NotepadProps> = ({
@@ -38,8 +39,20 @@ export const Notepad: React.FC<NotepadProps> = ({
   isMobile = false,
   yDoc,
   provider,
+  editorRef,
 }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (editorRef) {
+      (editorRef as any).current = textareaRef.current;
+    }
+    return () => {
+      if (editorRef) {
+        (editorRef as any).current = null;
+      }
+    };
+  }, [editorRef, textareaRef.current]);
 
 
 

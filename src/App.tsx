@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { AlertCircle, RefreshCw, Music } from 'lucide-react';
 import { ActivityBar } from './components/ActivityBar';
 import { Sidebar } from './components/Sidebar';
@@ -62,8 +62,16 @@ function App() {
   const isMobile = useIsMobile();
 
   // Layout panel states
-  const [activePanel, setActivePanel] = useState<'settings'>('settings');
+  const [activePanel, setActivePanel] = useState<'settings' | 'phrases'>('phrases');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+
+  const editorRef = useRef<any>(null);
+
+  const handleImportPhrase = (content: string) => {
+    if (editorRef.current && editorRef.current.insertText) {
+      editorRef.current.insertText(content);
+    }
+  };
 
   // Subconscious writing mode
   const [subconsciousActive, setSubconsciousActive] = useState(false);
@@ -288,6 +296,8 @@ function App() {
               penName={penName}
               setPenName={setPenName}
               googleDefaultName={googleDefaultName}
+              onImportPhrase={handleImportPhrase}
+              isProjectOpen={!!activeDraft}
             />
           </div>
         )}
@@ -308,6 +318,7 @@ function App() {
             onSubconsciousActiveChange={setSubconsciousActive}
             yDoc={yDoc}
             provider={provider}
+            editorRef={editorRef}
           />
         ) : (
           <div className="flex-1 h-full bg-paper paper-lines flex items-center justify-center text-ink-light">

@@ -54,7 +54,16 @@ export const MobileLayout: React.FC<MobileLayoutProps> = ({
   googleDefaultName,
 }) => {
   const [activeTab, setActiveTab] = useState<MobileTab>('write');
-  const [activePanel] = useState<'settings'>('settings');
+  const [activePanel] = useState<'settings' | 'phrases'>('phrases');
+
+  const editorRef = React.useRef<any>(null);
+
+  const handleImportPhrase = (content: string) => {
+    if (editorRef.current && editorRef.current.insertText) {
+      editorRef.current.insertText(content);
+      setActiveTab('write');
+    }
+  };
 
   // When a new draft is created, switch to Write
   const handleCreateDraft = (title?: string) => {
@@ -147,6 +156,7 @@ export const MobileLayout: React.FC<MobileLayoutProps> = ({
                 isCloudMode={isCloudMode}
                 onSubconsciousActiveChange={onSubconsciousActiveChange}
                 isMobile={true}
+                editorRef={editorRef}
               />
             ) : (
               <div className="flex-1 h-full bg-paper flex flex-col items-center justify-center text-ink-light gap-4 px-8">
@@ -184,6 +194,8 @@ export const MobileLayout: React.FC<MobileLayoutProps> = ({
               penName={penName}
               setPenName={setPenName}
               googleDefaultName={googleDefaultName}
+              onImportPhrase={handleImportPhrase}
+              isProjectOpen={!!activeDraft}
             />
           </div>
         )}

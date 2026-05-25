@@ -1,8 +1,9 @@
 import React from 'react';
 import { FileDown, FileUp, ChevronLeft } from 'lucide-react';
+import { PhraseCatcher } from './PhraseCatcher';
 
 interface SidebarProps {
-  activePanel: 'settings';
+  activePanel: 'settings' | 'phrases';
   exportAllDrafts: () => void;
   importDrafts: (jsonString: string) => boolean;
   setIsSidebarOpen: (open: boolean) => void;
@@ -11,6 +12,8 @@ interface SidebarProps {
   penName?: string;
   setPenName?: (name: string) => void;
   googleDefaultName?: string;
+  onImportPhrase?: (content: string) => void;
+  isProjectOpen: boolean;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -22,6 +25,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   penName,
   setPenName,
   googleDefaultName,
+  onImportPhrase,
+  isProjectOpen,
 }) => {
   const [localPenName, setLocalPenName] = React.useState(penName || '');
 
@@ -54,7 +59,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {/* Sidebar Header */}
       <div className="h-14 px-4 border-b border-paper-darker flex items-center justify-between select-none">
         <span className="font-semibold tracking-wide text-ink text-sm uppercase">
-          Settings
+          {activePanel === 'settings' ? 'Settings' : 'Phrase Catcher'}
         </span>
         {!isMobile && (
           <button
@@ -149,6 +154,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
             Songwriter's Workspace v2.5.0
           </div>
         </div>
+      )}
+
+      {/* Phrase Catcher Panel */}
+      {activePanel === 'phrases' && (
+        <PhraseCatcher
+          onImportPhrase={onImportPhrase}
+          isProjectOpen={isProjectOpen}
+        />
       )}
     </div>
   );
