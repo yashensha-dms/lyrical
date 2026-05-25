@@ -68,7 +68,7 @@ function App() {
   const [refreshGraveyardCount, setRefreshGraveyardCount] = useState(0);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(true);
-  const [activeRightPanel, setActiveRightPanel] = useState<'info' | 'scrapbook'>('info');
+  const [activeRightPanel, setActiveRightPanel] = useState<'info' | 'scrapbook' | 'audio'>('info');
 
   const editorRef = useRef<any>(null);
 

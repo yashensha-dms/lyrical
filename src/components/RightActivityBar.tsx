@@ -1,11 +1,11 @@
 import React from 'react';
-import { Info, PanelLeftClose, PanelLeft, BookOpen } from 'lucide-react';
+import { Info, PanelLeftClose, PanelLeft, BookOpen, Mic } from 'lucide-react';
 
 interface RightActivityBarProps {
   isSidebarOpen: boolean;
   setIsSidebarOpen: (open: boolean) => void;
-  activePanel: 'info' | 'scrapbook';
-  setActivePanel: (panel: 'info' | 'scrapbook') => void;
+  activePanel: 'info' | 'scrapbook' | 'audio';
+  setActivePanel: (panel: 'info' | 'scrapbook' | 'audio') => void;
 }
 
 export const RightActivityBar: React.FC<RightActivityBarProps> = ({
@@ -14,7 +14,7 @@ export const RightActivityBar: React.FC<RightActivityBarProps> = ({
   activePanel,
   setActivePanel,
 }) => {
-  const handleItemClick = (panel: 'info' | 'scrapbook') => {
+  const handleItemClick = (panel: 'info' | 'scrapbook' | 'audio') => {
     if (activePanel === panel && isSidebarOpen) {
       setIsSidebarOpen(false);
     } else {
@@ -70,6 +70,19 @@ export const RightActivityBar: React.FC<RightActivityBarProps> = ({
           aria-label="Scrapbook"
         >
           <BookOpen className="w-5 h-5 stroke-[1.5]" />
+        </button>
+
+        <button
+          onClick={() => handleItemClick('audio')}
+          className={`w-10 h-10 rounded-lg flex items-center justify-center transition-all duration-200 cursor-pointer ${
+            isSidebarOpen && activePanel === 'audio'
+              ? 'bg-paper-darker text-terracotta shadow-inner'
+              : 'text-ink-muted hover:text-ink hover:bg-paper-active/50'
+          }`}
+          title="Voice Memos"
+          aria-label="Voice Memos"
+        >
+          <Mic className="w-5 h-5 stroke-[1.5]" />
         </button>
       </div>
 

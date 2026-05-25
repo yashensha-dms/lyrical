@@ -2,13 +2,14 @@ import React from 'react';
 import { ChevronRight } from 'lucide-react';
 import { ProjectInfoPanel } from './ProjectInfoPanel';
 import { ScrapbookPanel } from './ScrapbookPanel';
+import { VoiceMemosPanel } from './VoiceMemosPanel';
 import type { Draft } from '../hooks/useDrafts';
 
 interface RightPanelProps {
   activeDraft: Draft;
   updateActiveDraft: (updates: Partial<Omit<Draft, 'id' | 'createdAt'>>) => void;
   setIsSidebarOpen: (open: boolean) => void;
-  activePanel: 'info' | 'scrapbook';
+  activePanel: 'info' | 'scrapbook' | 'audio';
 }
 
 export const RightPanel: React.FC<RightPanelProps> = ({
@@ -17,12 +18,25 @@ export const RightPanel: React.FC<RightPanelProps> = ({
   setIsSidebarOpen,
   activePanel,
 }) => {
+  const getHeaderLabel = () => {
+    switch (activePanel) {
+      case 'info':
+        return 'Project Info';
+      case 'scrapbook':
+        return 'Scrapbook';
+      case 'audio':
+        return 'Voice Memos';
+      default:
+        return '';
+    }
+  };
+
   return (
     <div className="w-80 h-full bg-paper-dark/70 border-l border-paper-darker flex flex-col flex-shrink-0 z-10">
       {/* Header */}
       <div className="h-14 px-4 border-b border-paper-darker flex items-center justify-between select-none flex-shrink-0">
         <span className="font-semibold tracking-wide text-ink text-sm uppercase">
-          {activePanel === 'info' ? 'Project Info' : 'Scrapbook'}
+          {getHeaderLabel()}
         </span>
         <button
           onClick={() => setIsSidebarOpen(false)}
@@ -39,8 +53,10 @@ export const RightPanel: React.FC<RightPanelProps> = ({
           activeDraft={activeDraft}
           updateActiveDraft={updateActiveDraft}
         />
-      ) : (
+      ) : activePanel === 'scrapbook' ? (
         <ScrapbookPanel projectId={activeDraft.id} />
+      ) : (
+        <VoiceMemosPanel projectId={activeDraft.id} />
       )}
     </div>
   );
