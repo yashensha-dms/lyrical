@@ -4,7 +4,7 @@
   "version": "2.5.0",
   "type": "module",
   "scripts": {
-    "dev": "concurrently --kill-others \"vite\" \"tsx server/index.ts\"",
+    "dev": "concurrently --kill-others \"vite\" \"tsx server/index.ts\" \"python -m uvicorn rhyme_server:app --port 8001\"",
     "server": "tsx server/index.ts",
     "build": "tsc -b && vite build",
     "lint": "eslint .",

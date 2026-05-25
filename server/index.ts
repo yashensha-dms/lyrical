@@ -217,6 +217,38 @@ app.get('/api/health', async (req, res) => {
   }
 });
 
+// GET /api/rhyme forwarding to FastAPI service
+app.get('/api/rhyme', async (req, res) => {
+  const { word } = req.query;
+  if (!word || typeof word !== 'string') {
+    return res.json({
+      word: '',
+      perfect: [],
+      slant: [],
+      perfect_bigrams: [],
+      slant_bigrams: []
+    });
+  }
+
+  try {
+    const response = await fetch(`http://127.0.0.1:8001/rhyme?word=${encodeURIComponent(word)}`);
+    if (!response.ok) {
+      throw new Error(`FastAPI returned status ${response.status}`);
+    }
+    const data = await response.json();
+    res.json(data);
+  } catch (error) {
+    console.error('FastAPI service is unavailable, returning empty response:', error);
+    res.json({
+      word,
+      perfect: [],
+      slant: [],
+      perfect_bigrams: [],
+      slant_bigrams: []
+    });
+  }
+});
+
 // 1. Get all projects belonging to logged in user (owned or collaborating)
 app.get('/api/projects', authenticateUser, async (req, res) => {
   try {
