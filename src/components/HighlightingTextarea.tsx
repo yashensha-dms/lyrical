@@ -34,6 +34,7 @@ interface HighlightingTextareaProps {
   title?: string;
   hideGutters?: boolean;
   onMoveToGraveyard?: () => void;
+  onWordDoubleClicked?: (word: string) => void;
 }
 
 const subconsciousCompartment = new Compartment();
@@ -247,6 +248,7 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
   title,
   hideGutters,
   onMoveToGraveyard,
+  onWordDoubleClicked,
 }, ref) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
@@ -281,7 +283,8 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
     onScroll,
     onSelect,
     onMouseUp,
-    onMoveToGraveyard
+    onMoveToGraveyard,
+    onWordDoubleClicked
   });
 
   React.useEffect(() => {
@@ -298,7 +301,8 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
       onScroll,
       onSelect,
       onMouseUp,
-      onMoveToGraveyard
+      onMoveToGraveyard,
+      onWordDoubleClicked
     };
   });
 
@@ -817,9 +821,28 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
         blur: () => {
           if (latestRef.current.onBlur) latestRef.current.onBlur();
         },
-        contextmenu: (event) => {
+        contextmenu: (event, view) => {
           if (hideGutters) return;
           event.preventDefault();
+          
+          let word = "";
+          const { from, to } = view.state.selection.main;
+          if (from !== to) {
+            word = view.state.sliceDoc(from, to).trim();
+          } else {
+            const pos = view.posAtCoords({ x: event.clientX, y: event.clientY });
+            if (pos !== null) {
+              const wordRange = view.state.wordAt(pos);
+              if (wordRange) {
+                word = view.state.sliceDoc(wordRange.from, wordRange.to).trim();
+              }
+            }
+          }
+          const cleanWord = word.replace(/^[^\w']+|[^\w']+$/g, '');
+          if (cleanWord && latestRef.current.onWordDoubleClicked) {
+            latestRef.current.onWordDoubleClicked(cleanWord);
+          }
+          
           triggerContextMenu(event.clientX, event.clientY);
           return true;
         },
@@ -871,6 +894,20 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
           setShowContextMenu(false);
           if (latestRef.current.onMouseUp) latestRef.current.onMouseUp();
           if (latestRef.current.onSelect) latestRef.current.onSelect();
+        },
+        dblclick: (event, view) => {
+          const pos = view.posAtCoords({ x: event.clientX, y: event.clientY });
+          if (pos !== null) {
+            const wordRange = view.state.wordAt(pos);
+            if (wordRange) {
+              const word = view.state.sliceDoc(wordRange.from, wordRange.to).trim();
+              const cleanWord = word.replace(/^[^\w']+|[^\w']+$/g, '');
+              if (cleanWord && latestRef.current.onWordDoubleClicked) {
+                latestRef.current.onWordDoubleClicked(cleanWord);
+              }
+            }
+          }
+          return true;
         }
       })
     ];
@@ -900,6 +937,53 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
     }
   };
 
+  const handleDoubleClick = (e: React.MouseEvent) => {
+    if (viewRef.current) {
+      const view = viewRef.current;
+      setTimeout(() => {
+        const { from, to } = view.state.selection.main;
+        let word = "";
+        if (from !== to) {
+          word = view.state.sliceDoc(from, to).trim();
+        } else {
+          const pos = view.posAtCoords({ x: e.clientX, y: e.clientY });
+          if (pos !== null) {
+            const wordRange = view.state.wordAt(pos);
+            if (wordRange) {
+              word = view.state.sliceDoc(wordRange.from, wordRange.to).trim();
+            }
+          }
+        }
+        const cleanWord = word.replace(/^[^\w']+|[^\w']+$/g, '');
+        if (cleanWord && latestRef.current.onWordDoubleClicked) {
+          latestRef.current.onWordDoubleClicked(cleanWord);
+        }
+      }, 10);
+    }
+  };
+
+  const handleFindRhymesFromMenu = () => {
+    if (viewRef.current) {
+      const view = viewRef.current;
+      const { from, to } = view.state.selection.main;
+      let word = "";
+      if (from !== to) {
+        word = view.state.sliceDoc(from, to).trim();
+      } else {
+        const pos = view.state.selection.main.head;
+        const wordRange = view.state.wordAt(pos);
+        if (wordRange) {
+          word = view.state.sliceDoc(wordRange.from, wordRange.to).trim();
+        }
+      }
+      const cleanWord = word.replace(/^[^\w']+|[^\w']+$/g, '');
+      if (cleanWord && latestRef.current.onWordDoubleClicked) {
+        latestRef.current.onWordDoubleClicked(cleanWord);
+      }
+    }
+    setShowContextMenu(false);
+  };
+
   const containerClass = `w-full h-full cursor-text overflow-hidden relative ${className || ''} ${
     hideGutters ? 'hide-gutters' : (isMobile ? 'is-mobile' : 'is-desktop')
   }`;
@@ -910,6 +994,7 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
       className={containerClass}
       style={style}
       onClick={handleContainerClick}
+      onDoubleClick={handleDoubleClick}
     >
       {/* Custom Context Menu Overlay */}
       {showContextMenu && (
@@ -923,6 +1008,14 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
           }}
           onClick={(e) => e.stopPropagation()}
         >
+          <button
+            className="w-full text-left px-3 py-1.5 text-xs text-terracotta hover:bg-paper-active transition cursor-pointer flex items-center justify-between font-bold"
+            onClick={handleFindRhymesFromMenu}
+          >
+            <span>Find Rhymes</span>
+            <span className="text-[10px] text-ink-light font-mono">Lookup</span>
+          </button>
+          <div className="border-t border-paper-darker my-1" style={{ borderColor: 'var(--color-paper-darker, #E4DDD4)' }} />
           <button
             className="w-full text-left px-3 py-1.5 text-xs text-ink hover:bg-paper-active transition cursor-pointer flex items-center justify-between"
             onClick={handleCut}

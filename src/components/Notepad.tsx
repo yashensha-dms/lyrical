@@ -25,6 +25,7 @@ interface NotepadProps {
   provider?: WebsocketProvider | null;
   editorRef?: React.RefObject<any>;
   onMoveToGraveyard?: () => void;
+  onWordDoubleClicked?: (word: string) => void;
 }
 
 export const Notepad: React.FC<NotepadProps> = ({
@@ -42,6 +43,7 @@ export const Notepad: React.FC<NotepadProps> = ({
   provider,
   editorRef,
   onMoveToGraveyard,
+  onWordDoubleClicked,
 }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -397,6 +399,7 @@ export const Notepad: React.FC<NotepadProps> = ({
             syllableTolerance={syllableTolerance}
             title={title}
             onMoveToGraveyard={onMoveToGraveyard}
+            onWordDoubleClicked={onWordDoubleClicked}
           />
         </div>
       </div>

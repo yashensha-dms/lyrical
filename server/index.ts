@@ -249,6 +249,32 @@ app.get('/api/rhyme', async (req, res) => {
   }
 });
 
+// GET /api/synonyms forwarding to FastAPI service
+app.get('/api/synonyms', async (req, res) => {
+  const { word } = req.query;
+  if (!word || typeof word !== 'string') {
+    return res.json({
+      word: '',
+      synonyms: []
+    });
+  }
+
+  try {
+    const response = await fetch(`http://127.0.0.1:8001/synonyms?word=${encodeURIComponent(word)}`);
+    if (!response.ok) {
+      throw new Error(`FastAPI returned status ${response.status}`);
+    }
+    const data = await response.json();
+    res.json(data);
+  } catch (error) {
+    console.error('FastAPI service is unavailable, returning empty response:', error);
+    res.json({
+      word,
+      synonyms: []
+    });
+  }
+});
+
 // 1. Get all projects belonging to logged in user (owned or collaborating)
 app.get('/api/projects', authenticateUser, async (req, res) => {
   try {

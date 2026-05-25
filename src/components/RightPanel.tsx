@@ -3,13 +3,23 @@ import { ChevronRight } from 'lucide-react';
 import { ProjectInfoPanel } from './ProjectInfoPanel';
 import { ScrapbookPanel } from './ScrapbookPanel';
 import { VoiceMemosPanel } from './VoiceMemosPanel';
+import { RhymePanel } from './RhymePanel';
 import type { Draft } from '../hooks/useDrafts';
 
 interface RightPanelProps {
   activeDraft: Draft;
   updateActiveDraft: (updates: Partial<Omit<Draft, 'id' | 'createdAt'>>) => void;
   setIsSidebarOpen: (open: boolean) => void;
-  activePanel: 'info' | 'scrapbook' | 'audio';
+  activePanel: 'info' | 'scrapbook' | 'audio' | 'rhyme';
+  lookupWord: string | null;
+  rhymeResults: any | null;
+  loadingRhymes: boolean;
+  rhymeError: string | null;
+  synonymResults: string[] | null;
+  loadingSynonyms: boolean;
+  synonymError: string | null;
+  onClearRhymes: () => void;
+  onSearchRhymes: (word: string) => void;
 }
 
 export const RightPanel: React.FC<RightPanelProps> = ({
@@ -17,6 +27,15 @@ export const RightPanel: React.FC<RightPanelProps> = ({
   updateActiveDraft,
   setIsSidebarOpen,
   activePanel,
+  lookupWord,
+  rhymeResults,
+  loadingRhymes,
+  rhymeError,
+  synonymResults,
+  loadingSynonyms,
+  synonymError,
+  onClearRhymes,
+  onSearchRhymes,
 }) => {
   const getHeaderLabel = () => {
     switch (activePanel) {
@@ -26,6 +45,8 @@ export const RightPanel: React.FC<RightPanelProps> = ({
         return 'Scrapbook';
       case 'audio':
         return 'Voice Memos';
+      case 'rhyme':
+        return 'Rhyme Finder';
       default:
         return '';
     }
@@ -55,8 +76,20 @@ export const RightPanel: React.FC<RightPanelProps> = ({
         />
       ) : activePanel === 'scrapbook' ? (
         <ScrapbookPanel projectId={activeDraft.id} />
-      ) : (
+      ) : activePanel === 'audio' ? (
         <VoiceMemosPanel projectId={activeDraft.id} />
+      ) : (
+        <RhymePanel
+          lookupWord={lookupWord}
+          data={rhymeResults}
+          isLoading={loadingRhymes}
+          error={rhymeError}
+          synonymResults={synonymResults}
+          loadingSynonyms={loadingSynonyms}
+          synonymError={synonymError}
+          onClear={onClearRhymes}
+          onSearch={onSearchRhymes}
+        />
       )}
     </div>
   );

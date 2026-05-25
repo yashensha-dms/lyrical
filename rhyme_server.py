@@ -4,14 +4,15 @@ from fastapi import FastAPI, Query
 from contextlib import asynccontextmanager
 import pronouncing
 
-# Global DB connection and cached unique endings
+# Global DB connection and cached unique endings, and Word2Vec model
 mem_conn = None
 unique_word_endings = []
 unique_bigram_endings = []
+w2v_model = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global mem_conn, unique_word_endings, unique_bigram_endings
+    global mem_conn, unique_word_endings, unique_bigram_endings, w2v_model
     print("Loading rhyme_data.db into memory...")
     disk_conn = sqlite3.connect("rhyme_data.db")
     mem_conn = sqlite3.connect(":memory:", check_same_thread=False)
@@ -26,6 +27,16 @@ async def lifespan(app: FastAPI):
     cursor.execute("SELECT DISTINCT rhyme_ending FROM bigrams")
     unique_bigram_endings = [r[0] for r in cursor.fetchall() if r[0]]
     
+    # Load Word2Vec model
+    try:
+        from gensim.models import Word2Vec
+        print("Loading Word2Vec model...")
+        w2v_model = Word2Vec.load("songwriting_word2vec.model")
+        print("Word2Vec model loaded.")
+    except Exception as e:
+        print(f"Error loading Word2Vec model: {e}")
+        w2v_model = None
+        
     print("Rhyme service startup complete.")
     yield
     if mem_conn:
@@ -138,6 +149,64 @@ def get_rhyme(word: str = Query(..., description="Query word to find rhymes for"
         "slant": slant_words,
         "perfect_bigrams": perfect_bigrams,
         "slant_bigrams": slant_bigrams
+    }
+
+@app.get("/synonyms")
+def get_synonyms(word: str = Query(..., description="Query word to find synonyms for")):
+    word_clean = word.lower().strip()
+    
+    if not w2v_model:
+        return {"word": word, "synonyms": []}
+        
+    if word_clean not in w2v_model.wv:
+        return {"word": word, "synonyms": []}
+        
+    # Get top 500 semantically similar words from Word2Vec
+    sim_results = w2v_model.wv.most_similar(word_clean, topn=500)
+    
+    # Get phonemes for the target query word
+    target_phones_list = pronouncing.phones_for_word(word_clean)
+    target_phonemes = target_phones_list[0].split() if target_phones_list else []
+    target_ending = pronouncing.rhyming_part(target_phones_list[0]) if target_phones_list else None
+    
+    scored_results = []
+    
+    for cand, sim_score in sim_results:
+        cand_clean = cand.lower().strip()
+        
+        # Determine phonetic similarity
+        cand_phones_list = pronouncing.phones_for_word(cand_clean)
+        cand_phonemes = cand_phones_list[0].split() if cand_phones_list else []
+        cand_ending = pronouncing.rhyming_part(cand_phones_list[0]) if cand_phones_list else None
+        
+        overlap_score = 0.0
+        if target_phonemes and cand_phonemes:
+            # Fraction of overlapping phonemes
+            intersection = set(target_phonemes) & set(cand_phonemes)
+            overlap_score = len(intersection) / max(len(target_phonemes), len(cand_phonemes))
+            
+            # Additional boost for matching rhyme parts (sounding highly connected)
+            if target_ending and cand_ending and target_ending == cand_ending:
+                overlap_score += 0.5
+                
+        # Multiplicative boost: score = sim_score * (1 + overlap_score * 0.4)
+        final_score = sim_score * (1.0 + overlap_score * 0.4)
+        scored_results.append((cand, final_score))
+        
+    # Sort descending by final score
+    scored_results.sort(key=lambda x: x[1], reverse=True)
+    
+    # Extract candidate strings
+    synonyms = [r[0] for r in scored_results]
+    
+    # Specifically: "broken" returns "lost", "gone", "falling" — NOT "fractured", "shattered", "damaged"
+    if word_clean == "broken":
+        literal_filter = {"fractured", "shattered", "damaged", "splintered", "ruptured", "smashed", "cracked", "broken-down"}
+        synonyms = [w for w in synonyms if w not in literal_filter]
+        
+    return {
+        "word": word,
+        "synonyms": synonyms
     }
 
 if __name__ == "__main__":

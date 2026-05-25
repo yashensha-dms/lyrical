@@ -4,7 +4,7 @@
   "version": "2.5.0",
   "type": "module",
   "scripts": {
-    "dev": "concurrently --kill-others \"vite\" \"tsx server/index.ts\" \"python -m uvicorn rhyme_server:app --port 8001\"",
+    "dev": "concurrently --kill-others \"vite\" \"tsx server/index.ts\" \"venv\\Scripts\\python -m uvicorn rhyme_server:app --port 8001\"",
     "server": "tsx server/index.ts",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
@@ -16,6 +16,7 @@
     "@radix-ui/react-context-menu": "^2.2.16",
     "@radix-ui/react-dropdown-menu": "^2.1.16",
     "@radix-ui/react-select": "^2.2.6",
+    "@radix-ui/react-tabs": "^1.1.13",
     "@radix-ui/react-tooltip": "^1.2.8",
     "@supabase/supabase-js": "^2.106.1",
     "@tiptap/extension-image": "^3.23.6",
