@@ -125,21 +125,7 @@ function App() {
   }
 
   // Show landing if no active draft
-  const showLanding = !activeDraft;
-
-  // If we are actively loading or joining a project URL, show the loading screen
-  const isFetchingDraft = urlDraftId && isLoading;
-
-  if (isFetchingDraft) {
-    return (
-      <div className="w-screen h-screen bg-paper flex items-center justify-center">
-        <div className="text-terracotta flex items-center gap-2">
-          <Music className="w-5 h-5 animate-spin" />
-          <span className="font-serif font-bold text-sm tracking-wide">Loading Song...</span>
-        </div>
-      </div>
-    );
-  }
+  const showLanding = !activeDraft && !urlDraftId;
 
   // ── Mobile Layout ──────────────────────────────────────────────────────────
   if (isMobile) {
@@ -214,7 +200,7 @@ function App() {
             Lyrical
           </button>
           <span className="text-[10px] bg-paper-dark border border-paper-darker text-ink-muted px-1.5 py-0.5 rounded font-mono font-medium">
-            {activeDraft.title || 'Untitled Song'}
+            {activeDraft?.title || 'Untitled Song'}
           </span>
 
           {isCloudMode ? (
@@ -307,21 +293,27 @@ function App() {
         )}
 
         {/* 3. Notepad */}
-        <Notepad
-          draftId={activeDraft.id}
-          title={activeDraft.title}
-          content={activeDraft.content}
-          targetTemplate={activeDraft.targetTemplate}
-          syllableTolerance={activeDraft.syllableTolerance ?? 1}
-          updateActiveDraft={updateActiveDraft}
-          remoteDraft={null}
-          setIsEditorFocused={setIsEditorFocused}
-          syncActiveDraftWithRemote={syncActiveDraftWithRemote}
-          isCloudMode={isCloudMode}
-          onSubconsciousActiveChange={setSubconsciousActive}
-          yDoc={yDoc}
-          provider={provider}
-        />
+        {activeDraft ? (
+          <Notepad
+            draftId={activeDraft.id}
+            title={activeDraft.title}
+            content={activeDraft.content}
+            targetTemplate={activeDraft.targetTemplate}
+            syllableTolerance={activeDraft.syllableTolerance ?? 1}
+            updateActiveDraft={updateActiveDraft}
+            remoteDraft={null}
+            setIsEditorFocused={setIsEditorFocused}
+            syncActiveDraftWithRemote={syncActiveDraftWithRemote}
+            isCloudMode={isCloudMode}
+            onSubconsciousActiveChange={setSubconsciousActive}
+            yDoc={yDoc}
+            provider={provider}
+          />
+        ) : (
+          <div className="flex-1 h-full bg-paper paper-lines flex items-center justify-center text-ink-light">
+            <span className="font-serif italic text-sm">Loading workspace...</span>
+          </div>
+        )}
       </main>
 
       {/* 5. Status Bar */}
@@ -331,6 +323,8 @@ function App() {
         <StatusBar
           draftTitle={activeDraft?.title || ''}
           isSaving={isSaving}
+          isLoading={isLoading}
+          isCloudMode={isCloudMode}
           content={activeDraft?.content || ''}
         />
       </div>

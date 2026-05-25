@@ -4,12 +4,16 @@ import { Check, Cloud, CloudOff, Loader2 } from 'lucide-react';
 interface StatusBarProps {
   draftTitle: string;
   isSaving: boolean;
+  isLoading?: boolean;
+  isCloudMode?: boolean;
   content: string;
 }
 
 export const StatusBar: React.FC<StatusBarProps> = ({
   draftTitle,
   isSaving,
+  isLoading = false,
+  isCloudMode = false,
   content,
 }) => {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
@@ -49,7 +53,12 @@ export const StatusBar: React.FC<StatusBarProps> = ({
         
         {/* Autosave Status */}
         <div className="flex items-center gap-1">
-          {isSaving ? (
+          {isLoading ? (
+            <>
+              <Loader2 className="w-3 h-3 animate-spin text-terracotta" />
+              <span>Loading song...</span>
+            </>
+          ) : isSaving ? (
             <>
               <Loader2 className="w-3 h-3 animate-spin text-terracotta" />
               <span>Saving...</span>
@@ -57,7 +66,9 @@ export const StatusBar: React.FC<StatusBarProps> = ({
           ) : (
             <>
               <Check className="w-3 h-3 text-emerald-600" />
-              <span className="text-emerald-700 font-medium">Saved to browser</span>
+              <span className="text-emerald-700 font-medium">
+                {isCloudMode ? 'Saved to cloud' : 'Saved to browser'}
+              </span>
             </>
           )}
         </div>

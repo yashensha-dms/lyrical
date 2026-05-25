@@ -88,100 +88,80 @@ class SyllableMarker extends GutterMarker {
     dom.appendChild(lineNumSpan);
 
     // 2. Syllable Badge
-    const isBackup = /^>\s?/.test(this.text);
     const isHeader = this.text.startsWith('[');
+    const count = countLineSyllables(this.text);
     
-    if (isBackup) {
+    if (!isHeader && count > 0) {
       const badgeSpan = document.createElement("span");
-      badgeSpan.className = "text-[8px] font-mono font-semibold text-terracotta/40 px-1 italic";
-      badgeSpan.style.fontSize = "8px";
-      badgeSpan.style.fontFamily = "monospace";
-      badgeSpan.style.color = "rgba(192, 105, 78, 0.4)";
-      badgeSpan.innerText = "alt";
-      dom.appendChild(badgeSpan);
-    } else if (this.text) {
-      if (isHeader) {
-        const badgeSpan = document.createElement("span");
-        badgeSpan.className = "text-[9px] uppercase font-semibold text-terracotta/40 px-1";
-        badgeSpan.style.fontSize = "9px";
-        badgeSpan.style.textTransform = "uppercase";
-        badgeSpan.style.fontWeight = "600";
-        badgeSpan.style.color = "rgba(192, 105, 78, 0.4)";
-        badgeSpan.innerText = "sec";
-        dom.appendChild(badgeSpan);
-      } else {
-        const count = countLineSyllables(this.text);
-        const badgeSpan = document.createElement("span");
-        
-        // Scan previous lines to find the lyric index
-        let lyricLineIndex = 0;
-        for (let idx = 1; idx < this.lineNum; idx++) {
-          const prevLineText = view.state.doc.line(idx).text.trim();
-          const prevIsBackup = /^>\s?/.test(prevLineText);
-          const prevIsHeader = prevLineText.startsWith('[');
-          const prevIsEmpty = !prevLineText;
-          if (!prevIsBackup && !prevIsHeader && !prevIsEmpty) {
-            lyricLineIndex++;
-          }
+      
+      // Scan previous lines to find the lyric index
+      let lyricLineIndex = 0;
+      for (let idx = 1; idx < this.lineNum; idx++) {
+        const prevLineText = view.state.doc.line(idx).text.trim();
+        const prevIsBackup = /^>\s?/.test(prevLineText);
+        const prevIsHeader = prevLineText.startsWith('[');
+        const prevIsEmpty = !prevLineText;
+        if (!prevIsBackup && !prevIsHeader && !prevIsEmpty) {
+          lyricLineIndex++;
         }
-
-        // Match against target template
-        const targets = this.options.targetTemplate
-          .replace(/[-\s,]+/g, '\n')
-          .split('\n')
-          .map(x => parseInt(x.trim()))
-          .filter(x => !isNaN(x));
-
-        let isMismatch = false;
-        let isNearMatch = false;
-        let targetCount = 0;
-
-        if (targets.length > 0) {
-          targetCount = targets[lyricLineIndex % targets.length];
-          const difference = Math.abs(count - targetCount);
-          if (difference > 0) {
-            if (difference <= this.options.tolerance) {
-              isNearMatch = true;
-            } else {
-              isMismatch = true;
-            }
-          }
-        }
-
-        badgeSpan.className = `px-1 rounded font-semibold text-[10px] flex items-center gap-0.5 transition-colors duration-150`;
-        badgeSpan.style.fontSize = "10px";
-        badgeSpan.style.fontWeight = "600";
-        badgeSpan.style.padding = "0 4px";
-        badgeSpan.style.borderRadius = "3px";
-
-        if (isMismatch) {
-          badgeSpan.className += " bg-amber-light text-amber-DEFAULT font-bold";
-          badgeSpan.style.backgroundColor = "#FEF6E4"; // amber-light
-          badgeSpan.style.color = "#C97A1A"; // amber-DEFAULT
-          badgeSpan.innerText = String(count) + " ⚠";
-        } else if (isNearMatch) {
-          badgeSpan.className += " bg-paper-darker border border-terracotta/20 text-ink font-medium";
-          badgeSpan.style.backgroundColor = "#E4DDD4";
-          badgeSpan.style.border = "1px solid rgba(192, 105, 78, 0.2)";
-          badgeSpan.style.color = "#2C2A29";
-          badgeSpan.innerText = String(count);
-        } else {
-          badgeSpan.className += " bg-paper-darker text-ink-muted";
-          badgeSpan.style.backgroundColor = "#E4DDD4";
-          badgeSpan.style.color = "#7A736A";
-          badgeSpan.innerText = String(count);
-        }
-
-        if (targets.length > 0) {
-          badgeSpan.title = isMismatch
-            ? `Mismatch! Target: ${targetCount}, Actual: ${count}`
-            : isNearMatch
-            ? `Near Match (±${this.options.tolerance}). Target: ${targetCount}, Actual: ${count}`
-            : `Matches target of ${targetCount} syllables`;
-        }
-
-        dom.appendChild(badgeSpan);
       }
+
+      // Match against target template
+      const targets = this.options.targetTemplate
+        .replace(/[-\s,]+/g, '\n')
+        .split('\n')
+        .map(x => parseInt(x.trim()))
+        .filter(x => !isNaN(x));
+
+      let isMismatch = false;
+      let isNearMatch = false;
+      let targetCount = 0;
+
+      if (targets.length > 0) {
+        targetCount = targets[lyricLineIndex % targets.length];
+        const difference = Math.abs(count - targetCount);
+        if (difference > 0) {
+          if (difference <= this.options.tolerance) {
+            isNearMatch = true;
+          } else {
+            isMismatch = true;
+          }
+        }
+      }
+
+      badgeSpan.className = `px-1 rounded font-semibold text-[10px] flex items-center gap-0.5 transition-colors duration-150`;
+      badgeSpan.style.fontSize = "10px";
+      badgeSpan.style.fontWeight = "600";
+      badgeSpan.style.padding = "0 4px";
+      badgeSpan.style.borderRadius = "3px";
+
+      if (isMismatch) {
+        badgeSpan.className += " bg-amber-light text-amber-DEFAULT font-bold";
+        badgeSpan.style.backgroundColor = "#FEF6E4"; // amber-light
+        badgeSpan.style.color = "#C97A1A"; // amber-DEFAULT
+        badgeSpan.innerText = String(count) + " ⚠";
+      } else if (isNearMatch) {
+        badgeSpan.className += " bg-paper-darker border border-terracotta/20 text-ink font-medium";
+        badgeSpan.style.backgroundColor = "#E4DDD4";
+        badgeSpan.style.border = "1px solid rgba(192, 105, 78, 0.2)";
+        badgeSpan.style.color = "#2C2A29";
+        badgeSpan.innerText = String(count);
+      } else {
+        badgeSpan.className += " bg-paper-darker text-ink-muted";
+        badgeSpan.style.backgroundColor = "#E4DDD4";
+        badgeSpan.style.color = "#7A736A";
+        badgeSpan.innerText = String(count);
+      }
+
+      if (targets.length > 0) {
+        badgeSpan.title = isMismatch
+          ? `Mismatch! Target: ${targetCount}, Actual: ${count}`
+          : isNearMatch
+          ? `Near Match (±${this.options.tolerance}). Target: ${targetCount}, Actual: ${count}`
+          : `Matches target of ${targetCount} syllables`;
+      }
+
+      dom.appendChild(badgeSpan);
     } else {
       const emptySpan = document.createElement("span");
       dom.appendChild(emptySpan);
