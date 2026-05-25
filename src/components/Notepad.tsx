@@ -24,6 +24,7 @@ interface NotepadProps {
   yDoc?: Y.Doc | null;
   provider?: WebsocketProvider | null;
   editorRef?: React.RefObject<any>;
+  onMoveToGraveyard?: () => void;
 }
 
 export const Notepad: React.FC<NotepadProps> = ({
@@ -40,6 +41,7 @@ export const Notepad: React.FC<NotepadProps> = ({
   yDoc,
   provider,
   editorRef,
+  onMoveToGraveyard,
 }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -394,6 +396,7 @@ export const Notepad: React.FC<NotepadProps> = ({
             targetTemplate={targetTemplate}
             syllableTolerance={syllableTolerance}
             title={title}
+            onMoveToGraveyard={onMoveToGraveyard}
           />
         </div>
       </div>

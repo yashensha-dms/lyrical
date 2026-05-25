@@ -1,8 +1,8 @@
-import { Settings, PanelLeftClose, PanelLeft, Sparkles } from 'lucide-react';
+import { Settings, PanelLeftClose, PanelLeft, Sparkles, Skull } from 'lucide-react';
 
 interface ActivityBarProps {
-  activePanel: 'settings' | 'phrases';
-  setActivePanel: (panel: 'settings' | 'phrases') => void;
+  activePanel: 'settings' | 'phrases' | 'graveyard';
+  setActivePanel: (panel: 'settings' | 'phrases' | 'graveyard') => void;
   isSidebarOpen: boolean;
   setIsSidebarOpen: (open: boolean) => void;
 }
@@ -13,7 +13,7 @@ export const ActivityBar: React.FC<ActivityBarProps> = ({
   isSidebarOpen,
   setIsSidebarOpen,
 }) => {
-  const handleItemClick = (panel: 'settings' | 'phrases') => {
+  const handleItemClick = (panel: 'settings' | 'phrases' | 'graveyard') => {
     if (activePanel === panel && isSidebarOpen) {
       setIsSidebarOpen(false);
     } else {
@@ -24,6 +24,7 @@ export const ActivityBar: React.FC<ActivityBarProps> = ({
 
   const navItems = [
     { id: 'phrases' as const, label: 'Phrase Catcher', icon: Sparkles },
+    { id: 'graveyard' as const, label: 'Graveyard', icon: Skull },
     { id: 'settings' as const, label: 'Workspace Settings', icon: Settings },
   ];
 

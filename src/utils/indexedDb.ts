@@ -12,6 +12,10 @@ export interface LocalDraft {
   syllableTolerance?: number;
   createdAt: string;
   updatedAt?: string;
+  status?: string;
+  writers?: string[];
+  producers?: string[];
+  featuredArtists?: string[];
 }
 
 export const initDB = (): Promise<IDBDatabase> => {

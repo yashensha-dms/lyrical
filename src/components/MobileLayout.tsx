@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
-import { PenLine, Library, AlertCircle, RefreshCw } from 'lucide-react';
+import { PenLine, Library, AlertCircle, RefreshCw, Info } from 'lucide-react';
 import { Sidebar } from './Sidebar';
 import { Notepad } from './Notepad';
+import { ProjectInfoPanel } from './ProjectInfoPanel';
 import type { Draft } from '../hooks/useDrafts';
 import * as Y from 'yjs';
 import { WebsocketProvider } from 'y-websocket';
 
-type MobileTab = 'write' | 'library';
+type MobileTab = 'write' | 'library' | 'info';
 
 interface MobileLayoutProps {
   // App state
@@ -75,6 +76,10 @@ export const MobileLayout: React.FC<MobileLayoutProps> = ({
     { id: 'write',   label: 'Write',   Icon: ({ className }) => <PenLine className={className} /> },
     { id: 'library', label: 'Library', Icon: ({ className }) => <Library className={className} /> },
   ];
+
+  if (activeDraft) {
+    tabs.push({ id: 'info', label: 'Info', Icon: ({ className }) => <Info className={className} /> });
+  }
 
   return (
     <div className="w-screen h-dvh flex flex-col bg-paper text-ink font-sans select-none overflow-hidden" style={{ height: '100dvh' }}>
@@ -200,6 +205,19 @@ export const MobileLayout: React.FC<MobileLayoutProps> = ({
           </div>
         )}
 
+
+        {/* Info Tab */}
+        {activeTab === 'info' && activeDraft && (
+          <div className="w-full h-full bg-paper flex flex-col">
+            <div className="border-b border-paper-darker px-4 py-3 flex items-center justify-between bg-paper-dark/30">
+              <span className="text-xs font-bold text-ink-muted uppercase tracking-wider">Project Info</span>
+            </div>
+            <ProjectInfoPanel
+              activeDraft={activeDraft}
+              updateActiveDraft={updateActiveDraft}
+            />
+          </div>
+        )}
 
       </main>
 

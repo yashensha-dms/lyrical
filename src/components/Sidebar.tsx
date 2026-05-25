@@ -1,9 +1,10 @@
 import React from 'react';
 import { FileDown, FileUp, ChevronLeft } from 'lucide-react';
 import { PhraseCatcher } from './PhraseCatcher';
+import { Graveyard } from './Graveyard';
 
 interface SidebarProps {
-  activePanel: 'settings' | 'phrases';
+  activePanel: 'settings' | 'phrases' | 'graveyard';
   exportAllDrafts: () => void;
   importDrafts: (jsonString: string) => boolean;
   setIsSidebarOpen: (open: boolean) => void;
@@ -14,6 +15,7 @@ interface SidebarProps {
   googleDefaultName?: string;
   onImportPhrase?: (content: string) => void;
   isProjectOpen: boolean;
+  refreshGraveyardCount?: number;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -27,6 +29,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   googleDefaultName,
   onImportPhrase,
   isProjectOpen,
+  refreshGraveyardCount = 0,
 }) => {
   const [localPenName, setLocalPenName] = React.useState(penName || '');
 
@@ -54,12 +57,24 @@ export const Sidebar: React.FC<SidebarProps> = ({
     e.target.value = ''; // Reset file input
   };
 
+  const getHeaderLabel = () => {
+    switch (activePanel) {
+      case 'settings':
+        return 'Settings';
+      case 'graveyard':
+        return 'Graveyard';
+      case 'phrases':
+      default:
+        return 'Phrase Catcher';
+    }
+  };
+
   return (
     <div className={`${isMobile ? 'w-full' : 'w-64'} h-full bg-paper-dark/70 border-r border-paper-darker flex flex-col flex-shrink-0 z-10`}>
       {/* Sidebar Header */}
       <div className="h-14 px-4 border-b border-paper-darker flex items-center justify-between select-none">
         <span className="font-semibold tracking-wide text-ink text-sm uppercase">
-          {activePanel === 'settings' ? 'Settings' : 'Phrase Catcher'}
+          {getHeaderLabel()}
         </span>
         {!isMobile && (
           <button
@@ -161,6 +176,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <PhraseCatcher
           onImportPhrase={onImportPhrase}
           isProjectOpen={isProjectOpen}
+        />
+      )}
+
+      {/* Graveyard Panel */}
+      {activePanel === 'graveyard' && (
+        <Graveyard
+          onImportPhrase={onImportPhrase}
+          isProjectOpen={isProjectOpen}
+          refreshTrigger={refreshGraveyardCount}
         />
       )}
     </div>

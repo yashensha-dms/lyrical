@@ -10,6 +10,7 @@ import { bracketMatching, indentOnInput } from '@codemirror/language';
 import { closeBrackets, closeBracketsKeymap } from '@codemirror/autocomplete';
 import { yCollab } from 'y-codemirror.next';
 import { countLineSyllables } from '../utils/syllables';
+import { supabase } from '../utils/supabaseClient';
 
 interface HighlightingTextareaProps {
   value: string;
@@ -32,6 +33,7 @@ interface HighlightingTextareaProps {
   syllableTolerance?: number;
   title?: string;
   hideGutters?: boolean;
+  onMoveToGraveyard?: () => void;
 }
 
 const subconsciousCompartment = new Compartment();
@@ -475,6 +477,7 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
   syllableTolerance,
   title,
   hideGutters,
+  onMoveToGraveyard,
 }, ref) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
@@ -518,7 +521,8 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
     onKeyUp,
     onScroll,
     onSelect,
-    onMouseUp
+    onMouseUp,
+    onMoveToGraveyard
   });
 
   React.useEffect(() => {
@@ -537,7 +541,8 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
       onKeyUp,
       onScroll,
       onSelect,
-      onMouseUp
+      onMouseUp,
+      onMoveToGraveyard
     };
   });
 
@@ -691,6 +696,69 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
       opacity: 1
     }
   });
+
+  const moveToGraveyard = async () => {
+    if (!viewRef.current) return;
+    const view = viewRef.current;
+    const { from, to } = view.state.selection.main;
+    let textToGrave = "";
+    let fromDel = from;
+    let toDel = to;
+
+    if (from === to) {
+      const line = view.state.doc.lineAt(from);
+      textToGrave = line.text;
+      fromDel = line.from;
+      toDel = line.to;
+      if (line.number < view.state.doc.lines) {
+        toDel = view.state.doc.line(line.number + 1).from;
+      } else if (line.number > 1) {
+        fromDel = view.state.doc.line(line.number - 1).to;
+      }
+    } else {
+      textToGrave = view.state.sliceDoc(from, to);
+    }
+
+    const trimmed = textToGrave.trim();
+    if (!trimmed) return;
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const pName = latestRef.current.title || "Untitled Song";
+
+      const { error } = await supabase
+        .from('graveyard')
+        .insert({
+          content: trimmed,
+          project_name: pName,
+          user_id: user.id
+        });
+
+      if (error) {
+        console.error("Failed to save to graveyard:", error.message);
+        alert("Failed to save to Graveyard: " + error.message);
+        return;
+      }
+
+      view.dispatch({
+        changes: { from: fromDel, to: toDel, insert: "" }
+      });
+
+      if (latestRef.current.onMoveToGraveyard) {
+        latestRef.current.onMoveToGraveyard();
+      }
+    } catch (e) {
+      console.error("Exception moving to graveyard:", e);
+    }
+  };
+
+  const handleMoveToGraveyard = () => {
+    moveToGraveyard();
+    setShowContextMenu(false);
+    viewRef.current?.focus();
+  };
 
   const handleTriggerExport = () => {
     setShowExportModal(true);
@@ -1064,6 +1132,13 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
         },
         { key: "Ctrl-d", run: duplicateLineCommand },
         {
+          key: "Ctrl-b",
+          run: () => {
+            moveToGraveyard();
+            return true;
+          }
+        },
+        {
           key: "Ctrl-s",
           run: () => {
             handleTriggerExport();
@@ -1162,6 +1237,13 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
           if (event.ctrlKey && event.key.toLowerCase() === 's') {
             event.preventDefault();
             handleTriggerExport();
+            return true;
+          }
+
+          // Trigger Ctrl+G graveyard command from keydown fallback
+          if (event.ctrlKey && event.key.toLowerCase() === 'b') {
+            event.preventDefault();
+            moveToGraveyard();
             return true;
           }
 
@@ -1283,6 +1365,13 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
           >
             <span>Paste</span>
             <span className="text-[10px] text-ink-light font-mono">Ctrl+V</span>
+          </button>
+          <button
+            className="w-full text-left px-3 py-1.5 text-xs text-ink hover:bg-paper-active transition cursor-pointer flex items-center justify-between"
+            onClick={handleMoveToGraveyard}
+          >
+            <span>Move to Graveyard</span>
+            <span className="text-[10px] text-ink-light font-mono">Ctrl+B</span>
           </button>
           <div className="border-t border-paper-darker my-1" style={{ borderColor: 'var(--color-paper-darker, #E4DDD4)' }} />
           <button

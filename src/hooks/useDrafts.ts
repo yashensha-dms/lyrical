@@ -13,6 +13,10 @@ export interface Draft {
   syllableTolerance?: number;
   createdAt: number;
   updatedAt: number;
+  status: string;
+  writers: string[];
+  producers: string[];
+  featuredArtists: string[];
 }
 
 const ACTIVE_DRAFT_KEY = 'lyrical_active_draft_id_v2';
@@ -35,6 +39,10 @@ But we're holding on tonight`,
     targetTemplate: '',
     createdAt: Date.now() - 3600000,
     updatedAt: Date.now() - 3600000,
+    status: 'Demo',
+    writers: [],
+    producers: [],
+    featuredArtists: [],
   }
 ];
 
@@ -309,7 +317,11 @@ export function useDrafts(session: any) {
             targetTemplate: '',
             syllableTolerance: 1,
             createdAt: Date.parse(d.created_at) || Date.now(),
-            updatedAt: Date.parse(d.created_at) || Date.now()
+            updatedAt: Date.parse(d.created_at) || Date.now(),
+            status: d.status || 'Demo',
+            writers: Array.isArray(d.writers) ? d.writers : [],
+            producers: Array.isArray(d.producers) ? d.producers : [],
+            featuredArtists: Array.isArray(d.featured_artists) ? d.featured_artists : [],
           }));
         } else {
           throw new Error('Failed to fetch projects from server');
@@ -324,7 +336,11 @@ export function useDrafts(session: any) {
           targetTemplate: d.targetTemplate,
           syllableTolerance: d.syllableTolerance ?? 1,
           createdAt: Date.parse(d.createdAt) || Date.now(),
-          updatedAt: d.updatedAt ? Date.parse(d.updatedAt) : Date.now()
+          updatedAt: d.updatedAt ? Date.parse(d.updatedAt) : Date.now(),
+          status: d.status || 'Demo',
+          writers: d.writers || [],
+          producers: d.producers || [],
+          featuredArtists: d.featuredArtists || [],
         }));
         if (loaded.length === 0) loaded = DEFAULT_DRAFTS;
       }
@@ -341,7 +357,11 @@ export function useDrafts(session: any) {
               targetTemplate: d.targetTemplate,
               syllableTolerance: d.syllableTolerance,
               createdAt: new Date(d.createdAt).toISOString(),
-              updatedAt: new Date(d.updatedAt).toISOString()
+              updatedAt: new Date(d.updatedAt).toISOString(),
+              status: d.status,
+              writers: d.writers,
+              producers: d.producers,
+              featuredArtists: d.featuredArtists,
             });
           }
           loaded = DEFAULT_DRAFTS;
@@ -353,7 +373,11 @@ export function useDrafts(session: any) {
             targetTemplate: d.targetTemplate,
             syllableTolerance: d.syllableTolerance ?? 1,
             createdAt: Date.parse(d.createdAt) || Date.now(),
-            updatedAt: d.updatedAt ? Date.parse(d.updatedAt) : Date.now()
+            updatedAt: d.updatedAt ? Date.parse(d.updatedAt) : Date.now(),
+            status: d.status || 'Demo',
+            writers: d.writers || [],
+            producers: d.producers || [],
+            featuredArtists: d.featuredArtists || [],
           }));
         }
       } catch (e) {
@@ -385,7 +409,11 @@ export function useDrafts(session: any) {
               targetTemplate: '',
               syllableTolerance: 1,
               createdAt: Date.parse(data.created_at) || Date.now(),
-              updatedAt: Date.parse(data.created_at) || Date.now()
+              updatedAt: Date.parse(data.created_at) || Date.now(),
+              status: data.status || 'Demo',
+              writers: Array.isArray(data.writers) ? data.writers : [],
+              producers: Array.isArray(data.producers) ? data.producers : [],
+              featuredArtists: Array.isArray(data.featured_artists) ? data.featured_artists : [],
             };
             setDrafts(prev => {
               if (prev.some(d => d.id === joinedProject.id)) return prev;
@@ -474,7 +502,11 @@ export function useDrafts(session: any) {
       targetTemplate: '',
       syllableTolerance: 1,
       createdAt: Date.now(),
-      updatedAt: Date.now()
+      updatedAt: Date.now(),
+      status: 'Demo',
+      writers: [],
+      producers: [],
+      featuredArtists: [],
     };
 
     if (isCloudMode) {
@@ -494,7 +526,11 @@ export function useDrafts(session: any) {
           targetTemplate: '',
           syllableTolerance: 1,
           createdAt: Date.parse(data.created_at) || Date.now(),
-          updatedAt: Date.parse(data.created_at) || Date.now()
+          updatedAt: Date.parse(data.created_at) || Date.now(),
+          status: data.status || 'Demo',
+          writers: Array.isArray(data.writers) ? data.writers : [],
+          producers: Array.isArray(data.producers) ? data.producers : [],
+          featuredArtists: Array.isArray(data.featured_artists) ? data.featured_artists : [],
         };
 
         setDrafts(prev => [created, ...prev]);
@@ -517,8 +553,23 @@ export function useDrafts(session: any) {
     return newDraft;
   }, [isCloudMode, getAuthHeaders]);
 
-  const updateActiveDraft = useCallback((updates: Partial<Omit<Draft, 'id' | 'createdAt'>>) => {
+  const updateActiveDraft = useCallback(async (updates: Partial<Omit<Draft, 'id' | 'createdAt'>>) => {
     if (!activeDraftId) return;
+
+    const hasMetadataUpdates = 
+      updates.status !== undefined || 
+      updates.writers !== undefined || 
+      updates.producers !== undefined || 
+      updates.featuredArtists !== undefined ||
+      updates.title !== undefined;
+
+    setDrafts(prev =>
+      prev.map(d =>
+        d.id === activeDraftId
+          ? { ...d, ...updates, updatedAt: Date.now() }
+          : d
+      )
+    );
 
     if (isCloudMode && yDoc) {
       const ydoc = yDoc;
@@ -538,14 +589,46 @@ export function useDrafts(session: any) {
           }
         }
       }, 'local-react-update');
+    }
+
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(activeDraftId);
+    if (isCloudMode && isUuid) {
+      if (hasMetadataUpdates) {
+        try {
+          const dbUpdates: any = {};
+          if (updates.title !== undefined) dbUpdates.title = updates.title;
+          if (updates.status !== undefined) dbUpdates.status = updates.status;
+          if (updates.writers !== undefined) dbUpdates.writers = updates.writers;
+          if (updates.producers !== undefined) dbUpdates.producers = updates.producers;
+          if (updates.featuredArtists !== undefined) dbUpdates.featured_artists = updates.featuredArtists;
+
+          const { error } = await supabase
+            .from('projects')
+            .update(dbUpdates)
+            .eq('id', activeDraftId);
+          if (error) throw error;
+        } catch (e) {
+          console.error('Failed to update project metadata in Supabase:', e);
+        }
+      }
     } else {
-      setDrafts(prev =>
-        prev.map(d =>
-          d.id === activeDraftId
-            ? { ...d, ...updates, updatedAt: Date.now() }
-            : d
-        )
-      );
+      const currentDraft = draftsRef.current.find(d => d.id === activeDraftId);
+      if (currentDraft) {
+        const updatedLocal = {
+          ...currentDraft,
+          ...updates,
+          updatedAt: Date.now()
+        };
+        try {
+          await saveLocalDraft({
+            ...updatedLocal,
+            createdAt: new Date(updatedLocal.createdAt).toISOString(),
+            updatedAt: new Date(updatedLocal.updatedAt).toISOString()
+          });
+        } catch (e) {
+          console.error('Failed to save draft locally:', e);
+        }
+      }
     }
   }, [activeDraftId, yDoc, isCloudMode]);
 

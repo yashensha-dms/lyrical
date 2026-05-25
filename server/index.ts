@@ -225,7 +225,7 @@ app.get('/api/projects', authenticateUser, async (req, res) => {
     // Fetch projects owned by user
     const { data: ownedProjects, error: ownedError } = await supabase
       .from('projects')
-      .select('id, title, created_at, user_id')
+      .select('id, title, created_at, user_id, status, writers, producers, featured_artists')
       .eq('user_id', user.id);
 
     if (ownedError) throw ownedError;
@@ -233,7 +233,7 @@ app.get('/api/projects', authenticateUser, async (req, res) => {
     // Fetch projects where user is a collaborator
     const { data: collabProjects, error: collabError } = await supabase
       .from('project_collaborators')
-      .select('projects(id, title, created_at, user_id)')
+      .select('projects(id, title, created_at, user_id, status, writers, producers, featured_artists)')
       .eq('user_id', user.id);
 
     if (collabError) throw collabError;
@@ -273,7 +273,7 @@ app.post('/api/projects', authenticateUser, async (req, res) => {
         title,
         user_id: user.id
       })
-      .select('id, title, created_at, user_id')
+      .select('id, title, created_at, user_id, status, writers, producers, featured_artists')
       .single();
 
     if (error) throw error;
@@ -296,7 +296,7 @@ app.post('/api/projects/:id/join', authenticateUser, async (req, res) => {
   try {
     const { data: project, error: getError } = await supabase
       .from('projects')
-      .select('id, title, created_at, user_id')
+      .select('id, title, created_at, user_id, status, writers, producers, featured_artists')
       .eq('id', projectId)
       .single();
 

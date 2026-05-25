@@ -11,6 +11,8 @@ import { useIsMobile } from './hooks/useIsMobile';
 import { useRoute } from './hooks/useRoute';
 import { supabase } from './utils/supabaseClient';
 import { Login } from './components/Login';
+import { RightPanel } from './components/RightPanel';
+import { RightActivityBar } from './components/RightActivityBar';
 
 function App() {
   const [session, setSession] = useState<any>(null);
@@ -62,8 +64,10 @@ function App() {
   const isMobile = useIsMobile();
 
   // Layout panel states
-  const [activePanel, setActivePanel] = useState<'settings' | 'phrases'>('phrases');
+  const [activePanel, setActivePanel] = useState<'settings' | 'phrases' | 'graveyard'>('phrases');
+  const [refreshGraveyardCount, setRefreshGraveyardCount] = useState(0);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(true);
 
   const editorRef = useRef<any>(null);
 
@@ -298,28 +302,51 @@ function App() {
               googleDefaultName={googleDefaultName}
               onImportPhrase={handleImportPhrase}
               isProjectOpen={!!activeDraft}
+              refreshGraveyardCount={refreshGraveyardCount}
             />
           </div>
         )}
 
         {/* 3. Notepad */}
         {activeDraft ? (
-          <Notepad
-            draftId={activeDraft.id}
-            title={activeDraft.title}
-            content={activeDraft.content}
-            targetTemplate={activeDraft.targetTemplate}
-            syllableTolerance={activeDraft.syllableTolerance ?? 1}
-            updateActiveDraft={updateActiveDraft}
-            remoteDraft={null}
-            setIsEditorFocused={setIsEditorFocused}
-            syncActiveDraftWithRemote={syncActiveDraftWithRemote}
-            isCloudMode={isCloudMode}
-            onSubconsciousActiveChange={setSubconsciousActive}
-            yDoc={yDoc}
-            provider={provider}
-            editorRef={editorRef}
-          />
+          <>
+            <Notepad
+              draftId={activeDraft.id}
+              title={activeDraft.title}
+              content={activeDraft.content}
+              targetTemplate={activeDraft.targetTemplate}
+              syllableTolerance={activeDraft.syllableTolerance ?? 1}
+              updateActiveDraft={updateActiveDraft}
+              remoteDraft={null}
+              setIsEditorFocused={setIsEditorFocused}
+              syncActiveDraftWithRemote={syncActiveDraftWithRemote}
+              isCloudMode={isCloudMode}
+              onSubconsciousActiveChange={setSubconsciousActive}
+              yDoc={yDoc}
+              provider={provider}
+              editorRef={editorRef}
+              onMoveToGraveyard={() => setRefreshGraveyardCount(prev => prev + 1)}
+            />
+            {isRightSidebarOpen && (
+              <div className={`transition-all duration-500 h-full flex flex-shrink-0 ${
+                subconsciousActive ? 'opacity-10 pointer-events-none' : ''
+              }`}>
+                <RightPanel
+                  activeDraft={activeDraft}
+                  updateActiveDraft={updateActiveDraft}
+                  setIsSidebarOpen={setIsRightSidebarOpen}
+                />
+              </div>
+            )}
+            <div className={`transition-all duration-500 h-full flex flex-shrink-0 ${
+              subconsciousActive ? 'opacity-10 pointer-events-none' : ''
+            }`}>
+              <RightActivityBar
+                isSidebarOpen={isRightSidebarOpen}
+                setIsSidebarOpen={setIsRightSidebarOpen}
+              />
+            </div>
+          </>
         ) : (
           <div className="flex-1 h-full bg-paper paper-lines flex items-center justify-center text-ink-light">
             <span className="font-serif italic text-sm">Loading workspace...</span>
