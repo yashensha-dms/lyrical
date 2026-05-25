@@ -6,6 +6,29 @@ import Youtube from '@tiptap/extension-youtube';
 import { supabase } from '../utils/supabaseClient';
 import { Loader2 } from 'lucide-react';
 
+function getImagesFromJSON(node: any): string[] {
+  if (!node) return [];
+  const urls: string[] = [];
+  if (node.type === 'image' && node.attrs?.src) {
+    urls.push(node.attrs.src);
+  }
+  if (Array.isArray(node.content)) {
+    for (const child of node.content) {
+      urls.push(...getImagesFromJSON(child));
+    }
+  }
+  return urls;
+}
+
+const getStoragePathFromUrl = (url: string): string | null => {
+  const marker = '/public/scrapbook/';
+  const index = url.indexOf(marker);
+  if (index !== -1) {
+    return url.substring(index + marker.length);
+  }
+  return null;
+};
+
 interface ScrapbookPanelProps {
   projectId: string;
 }
@@ -14,6 +37,9 @@ export const ScrapbookPanel: React.FC<ScrapbookPanelProps> = ({ projectId }) => 
   const [loading, setLoading] = useState(true);
   const [uploadingImage, setUploadingImage] = useState(false);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  
+  const pendingDeletionsRef = useRef<{ [url: string]: ReturnType<typeof setTimeout> }>({});
+  const knownImagesRef = useRef<Set<string>>(new Set());
 
   // Initialize TipTap
   const editor = useEditor({
@@ -50,7 +76,7 @@ export const ScrapbookPanel: React.FC<ScrapbookPanelProps> = ({ projectId }) => 
         return false;
       },
     },
-    // Auto-save on every change with 1 second debounce
+    // Auto-save on every change with 1 second debounce, and track deleted images
     onUpdate({ editor }) {
       const json = editor.getJSON();
       
@@ -78,6 +104,43 @@ export const ScrapbookPanel: React.FC<ScrapbookPanelProps> = ({ projectId }) => 
           console.error('Error auto-saving scrapbook entry:', err);
         }
       }, 1000);
+
+      // Storage image cleanup detection
+      const currentImages = getImagesFromJSON(json);
+      const currentImagesSet = new Set(currentImages);
+
+      // Add any new images to the known set and cancel any pending deletion if they reappear
+      currentImages.forEach((url) => {
+        knownImagesRef.current.add(url);
+        if (pendingDeletionsRef.current[url]) {
+          clearTimeout(pendingDeletionsRef.current[url]);
+          delete pendingDeletionsRef.current[url];
+        }
+      });
+
+      // Identify removed images and schedule storage deletion after 1 minute
+      knownImagesRef.current.forEach((url) => {
+        if (!currentImagesSet.has(url) && !pendingDeletionsRef.current[url]) {
+          const timer = setTimeout(async () => {
+            // Re-verify the image is still missing from the editor document before deleting
+            const latestImages = getImagesFromJSON(editor.getJSON());
+            if (!latestImages.includes(url)) {
+              const storagePath = getStoragePathFromUrl(url);
+              if (storagePath) {
+                console.log('Deleting removed image from storage:', storagePath);
+                const { error } = await supabase.storage.from('scrapbook').remove([storagePath]);
+                if (error) {
+                  console.error('Failed to delete image from storage:', error.message);
+                } else {
+                  knownImagesRef.current.delete(url);
+                }
+              }
+            }
+            delete pendingDeletionsRef.current[url];
+          }, 60000); // 1 minute delay
+          pendingDeletionsRef.current[url] = timer;
+        }
+      });
     },
   }, [projectId]);
 
@@ -103,6 +166,9 @@ export const ScrapbookPanel: React.FC<ScrapbookPanelProps> = ({ projectId }) => 
         if (isMounted) {
           if (data?.content) {
             editor.commands.setContent(data.content);
+            // Populate initial set of images currently in the document
+            const initialImages = getImagesFromJSON(data.content);
+            knownImagesRef.current = new Set(initialImages);
           } else {
             editor.commands.setContent({
               type: 'doc',
@@ -115,6 +181,7 @@ export const ScrapbookPanel: React.FC<ScrapbookPanelProps> = ({ projectId }) => 
                 }
               ],
             });
+            knownImagesRef.current = new Set();
           }
           setLoading(false);
         }
@@ -131,6 +198,9 @@ export const ScrapbookPanel: React.FC<ScrapbookPanelProps> = ({ projectId }) => 
       if (saveTimeoutRef.current) {
         clearTimeout(saveTimeoutRef.current);
       }
+      // Clean up all pending deletion timers on unmount/project switch
+      Object.values(pendingDeletionsRef.current).forEach(clearTimeout);
+      pendingDeletionsRef.current = {};
     };
   }, [projectId, editor]);
 
@@ -164,6 +234,9 @@ export const ScrapbookPanel: React.FC<ScrapbookPanelProps> = ({ projectId }) => 
       if (!urlData.publicUrl) {
         throw new Error('Could not get public URL for uploaded file.');
       }
+
+      // Register the uploaded image as a known image
+      knownImagesRef.current.add(urlData.publicUrl);
 
       // Insert image into TipTap at the cursor position
       editor.chain().focus().setImage({ src: urlData.publicUrl }).run();
