@@ -66,8 +66,8 @@ function App() {
   // Layout panel states
   const [activePanel, setActivePanel] = useState<'settings' | 'phrases' | 'graveyard'>('phrases');
   const [refreshGraveyardCount, setRefreshGraveyardCount] = useState(0);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(false);
   const [activeRightPanel, setActiveRightPanel] = useState<'info' | 'scrapbook' | 'audio'>('info');
 
   const editorRef = useRef<any>(null);

@@ -29,8 +29,21 @@ export const VoiceMemoCard: React.FC<VoiceMemoCardProps> = ({
   const [isReady, setIsReady] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
+  // Keep track of the loaded URL to prevent rebuilding when switching from optimistic blob to remote URL
+  const loadedUrlRef = useRef<string>('');
+
   useEffect(() => {
     if (!containerRef.current || !memo.audio_url) return;
+
+    // If we've already loaded a local blob URL and the new URL is a remote one, don't reload
+    if (loadedUrlRef.current && loadedUrlRef.current.startsWith('blob:') && !memo.audio_url.startsWith('blob:')) {
+      // Just update our ref to the remote URL for future reference
+      loadedUrlRef.current = memo.audio_url;
+      return;
+    }
+
+    loadedUrlRef.current = memo.audio_url;
+    setIsReady(false);
 
     // Create Wavesurfer instance
     const ws = WaveSurfer.create({
@@ -45,7 +58,7 @@ export const VoiceMemoCard: React.FC<VoiceMemoCardProps> = ({
 
     wavesurferRef.current = ws;
 
-    // Load public audio URL
+    // Load public audio URL or blob URL
     ws.load(memo.audio_url);
 
     ws.on('ready', () => {
@@ -158,7 +171,7 @@ export const VoiceMemoCard: React.FC<VoiceMemoCardProps> = ({
       <div className="flex items-center gap-3">
         <button
           onClick={onPlayToggle}
-          disabled={!isReady || memo.isOptimistic}
+          disabled={!isReady}
           className={`w-8 h-8 rounded-full flex items-center justify-center transition-all duration-200 cursor-pointer ${
             isPlaying
               ? 'bg-terracotta hover:bg-terracotta-hover text-white'

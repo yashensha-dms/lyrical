@@ -80,9 +80,10 @@ export const VoiceMemosPanel: React.FC<VoiceMemosPanelProps> = ({ projectId }) =
 
       const recorder = new RecordRTC(stream, {
         type: 'audio',
-        mimeType: 'audio/webm',
+        mimeType: 'audio/webm;codecs=opus' as any,
         recorderType: RecordRTC.StereoAudioRecorder, // safe default for browsers
         numberOfAudioChannels: 1,
+        desiredSampRate: 16000, // 16kHz is ideal for voice memos to minimize size
       });
 
       recorderRef.current = recorder;
@@ -167,15 +168,29 @@ export const VoiceMemosPanel: React.FC<VoiceMemosPanelProps> = ({ projectId }) =
           throw dbError;
         }
 
-        // Replace optimistic memo with actual database record
+        // Replace optimistic memo with actual database record, revoking the object URL safely
         setMemos((prev) =>
-          prev.map((m) => (m.id === tempId ? { ...dbMemo } : m))
+          prev.map((m) => {
+            if (m.id === tempId) {
+              if (m.audio_url.startsWith('blob:')) {
+                URL.revokeObjectURL(m.audio_url);
+              }
+              return { ...dbMemo };
+            }
+            return m;
+          })
         );
       } catch (err: any) {
         console.error('Failed to save voice memo:', err);
         alert('Failed to save voice memo: ' + (err.message || String(err)));
-        // Remove optimistic memo from list on error
-        setMemos((prev) => prev.filter((m) => m.id !== tempId));
+        // Remove optimistic memo from list on error and revoke URL
+        setMemos((prev) => {
+          const found = prev.find((m) => m.id === tempId);
+          if (found && found.audio_url.startsWith('blob:')) {
+            URL.revokeObjectURL(found.audio_url);
+          }
+          return prev.filter((m) => m.id !== tempId);
+        });
       }
     });
   };
