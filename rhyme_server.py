@@ -98,13 +98,13 @@ async def lifespan(app: FastAPI):
     disk_conn.backup(mem_conn)
     disk_conn.close()
     
-    # Pre-cache unique endings for slant rhyme lookups
+    # Pre-cache unique endings for slant rhyme lookups (pre-split into lists to optimize distance calculation)
     cursor = mem_conn.cursor()
     cursor.execute("SELECT DISTINCT rhyme_ending FROM words")
-    unique_word_endings = [r[0] for r in cursor.fetchall() if r[0]]
+    unique_word_endings = [r[0].split() for r in cursor.fetchall() if r[0]]
     
     cursor.execute("SELECT DISTINCT rhyme_ending FROM bigrams")
-    unique_bigram_endings = [r[0] for r in cursor.fetchall() if r[0]]
+    unique_bigram_endings = [r[0].split() for r in cursor.fetchall() if r[0]]
 
     # Pre-cache word phoneme profiles for fast phonetic swapping
     print("Caching word phoneme profiles...")
@@ -200,7 +200,13 @@ def get_rhyme(word: str = Query(..., description="Query word to find rhymes for"
     
     # Calculate slant word endings using phonetic token edit distance
     source_tokens = rhyme_ending.split()
-    slant_w_endings = [e for e in unique_word_endings if phoneme_distance(source_tokens, e.split()) < 1.3]
+    len_source = len(source_tokens)
+    
+    # Pre-filter by length difference (must be < 1.3) to bypass expensive edit distance calculations
+    slant_w_endings = [
+        " ".join(e) for e in unique_word_endings 
+        if abs(len_source - len(e)) < 1.3 and phoneme_distance(source_tokens, e) < 1.3
+    ]
     
     if not slant_w_endings:
         slant_words = []
@@ -229,7 +235,10 @@ def get_rhyme(word: str = Query(..., description="Query word to find rhymes for"
             break
     
     # 5. Slant bigram rhymes
-    slant_b_endings = [e for e in unique_bigram_endings if phoneme_distance(source_tokens, e.split()) < 1.3]
+    slant_b_endings = [
+        " ".join(e) for e in unique_bigram_endings 
+        if abs(len_source - len(e)) < 1.3 and phoneme_distance(source_tokens, e) < 1.3
+    ]
     if not slant_b_endings:
         slant_bigrams = []
     else:
