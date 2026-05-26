@@ -9,7 +9,8 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "start": "tsx server/index.ts"
+    "start": "concurrently --kill-others \"tsx server/index.ts\" \"python3 -m uvicorn rhyme_server:app --host 127.0.0.1 --port 8001\"",
+    "postinstall": "pip3 install --break-system-packages -r requirements.txt || pip install -r requirements.txt || true"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.4.0",
@@ -31,6 +32,7 @@
     "@types/ws": "^8.18.1",
     "@wavesurfer/react": "^1.0.12",
     "codemirror": "^6.0.2",
+    "concurrently": "^9.1.2",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
@@ -57,7 +59,6 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
     "autoprefixer": "^10.5.0",
-    "concurrently": "^9.1.2",
     "eslint": "^10.3.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.2",
