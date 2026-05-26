@@ -24,6 +24,7 @@ setInterval(() => {
         console.log(`[Yjs GC] Cleaning up dangling doc: ${docName}`);
         doc.destroy();
         docs.delete(docName);
+        loadedDocs.delete(docName);
       }
     }
   } catch (err) {
@@ -57,6 +58,8 @@ function debounce<T extends (...args: any[]) => void>(func: T, wait: number): (.
   };
 }
 
+const loadedDocs = new Set<string>();
+
 // ── Yjs Collaboration & Supabase Persistence ────────────────────────────────
 // Persistence uses plain text (title + content) stored directly in the projects
 // table — no binary Yjs state. This avoids the dual-module Yjs constructor
@@ -87,13 +90,20 @@ setPersistence({
             contentText.insert(0, project.content);
           }
         });
+        loadedDocs.add(docName);
       }
     } catch (err) {
       console.error(`Error loading project ${docName} for Yjs persistence:`, err);
+      return;
     }
 
     // Debounced save: extract plain text and write to Supabase
     const saveToDb = debounce(async () => {
+      if (!loadedDocs.has(docName)) {
+        console.warn(`[Yjs Sync] Blocked auto-save for ${docName} because initial DB load was not completed/successful.`);
+        return;
+      }
+
       try {
         const title = ydoc.getText('title').toString();
         const content = ydoc.getText('content').toString();
@@ -115,6 +125,10 @@ setPersistence({
     });
   },
   writeState: async (docName: string, ydoc: any) => {
+    if (!loadedDocs.has(docName)) {
+      console.warn(`[Yjs Sync] Blocked final save for ${docName} because initial DB load was not completed/successful.`);
+      return;
+    }
     try {
       const title = ydoc.getText('title').toString();
       const content = ydoc.getText('content').toString();
@@ -126,6 +140,7 @@ setPersistence({
 
       if (error) throw error;
       console.log(`Final saved project ${docName} to Supabase.`);
+      loadedDocs.delete(docName);
     } catch (err: any) {
       console.error(`Failed to final save project ${docName}:`, err.message);
     }
