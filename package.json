@@ -6,11 +6,10 @@
   "scripts": {
     "dev": "concurrently --kill-others \"vite\" \"tsx server/index.ts\" \"venv\\Scripts\\python -m uvicorn rhyme_server:app --port 8001\"",
     "server": "tsx server/index.ts",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && (python3 -m venv venv || python -m venv venv) && venv/bin/pip install -r requirements.txt",
     "lint": "eslint .",
     "preview": "vite preview",
-    "start": "concurrently --kill-others \"tsx server/index.ts\" \"PYTHONPATH=\\$(python3 -m site --user-site) python3 -m uvicorn rhyme_server:app --host 127.0.0.1 --port 8001 || python3 -m uvicorn rhyme_server:app --host 127.0.0.1 --port 8001\"",
-    "postinstall": "pip3 install --break-system-packages -r requirements.txt || pip install -r requirements.txt || true"
+    "start": "concurrently --kill-others \"tsx server/index.ts\" \"venv/bin/python3 -m uvicorn rhyme_server:app --host 127.0.0.1 --port 8001 || venv/bin/python -m uvicorn rhyme_server:app --host 127.0.0.1 --port 8001 || python3 -m uvicorn rhyme_server:app --host 127.0.0.1 --port 8001\""
   },
   "dependencies": {
     "@hookform/resolvers": "^5.4.0",
