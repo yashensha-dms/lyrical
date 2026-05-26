@@ -1,0 +1,4 @@
+fastapi
+uvicorn
+pronouncing
+pydantic
