@@ -63,9 +63,6 @@ export function useDrafts(session: any) {
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [healthStatus, setHealthStatus] = useState<'checking' | 'connected' | 'disconnected'>('checking');
-  const [useLocalMode, setUseLocalModeState] = useState<boolean>(() => {
-    return localStorage.getItem('lyrical_use_local_mode') === 'true';
-  });
 
   const draftsRef = useRef(drafts);
   const isEditorFocusedRef = useRef(false);
@@ -117,14 +114,9 @@ export function useDrafts(session: any) {
     draftsRef.current = drafts;
   }, [drafts]);
 
-  const isCloudMode = !useLocalMode && !!session;
+  const isCloudMode = !!session;
   const isCloudModeRef = useRef(isCloudMode);
   useEffect(() => { isCloudModeRef.current = isCloudMode; }, [isCloudMode]);
-
-  const setUseLocalMode = useCallback((val: boolean) => {
-    setUseLocalModeState(val);
-    localStorage.setItem('lyrical_use_local_mode', String(val));
-  }, []);
 
   const setIsEditorFocused = useCallback((v: boolean) => {
     isEditorFocusedRef.current = v;
@@ -311,7 +303,7 @@ export function useDrafts(session: any) {
       setHealthStatus('disconnected');
     }
 
-    const cloudActive = dbConnected && !useLocalMode && !!session;
+    const cloudActive = dbConnected && !!session;
     let loaded: Draft[] = [];
 
     if (cloudActive) {
@@ -340,65 +332,10 @@ export function useDrafts(session: any) {
             return mapped;
           });
         } else {
-          throw new Error('Failed to fetch projects from server');
+          console.warn('Failed to fetch projects from server');
         }
       } catch (e) {
-        console.error('Failed to load projects, falling back to local database', e);
-        const local = await getLocalDrafts();
-        loaded = local.map(d => ({
-          id: d.id,
-          title: d.title,
-          content: d.content,
-          targetTemplate: d.targetTemplate,
-          syllableTolerance: d.syllableTolerance ?? 1,
-          createdAt: Date.parse(d.createdAt) || Date.now(),
-          updatedAt: d.updatedAt ? Date.parse(d.updatedAt) : Date.now(),
-          status: d.status || 'Demo',
-          writers: d.writers || [],
-          producers: d.producers || [],
-          featuredArtists: d.featuredArtists || [],
-        }));
-        if (loaded.length === 0) loaded = DEFAULT_DRAFTS;
-      }
-    } else {
-      // Local mode (IndexedDB)
-      try {
-        const local = await getLocalDrafts();
-        if (local.length === 0) {
-          for (const d of DEFAULT_DRAFTS) {
-            await saveLocalDraft({
-              id: d.id,
-              title: d.title,
-              content: d.content,
-              targetTemplate: d.targetTemplate,
-              syllableTolerance: d.syllableTolerance,
-              createdAt: new Date(d.createdAt).toISOString(),
-              updatedAt: new Date(d.updatedAt).toISOString(),
-              status: d.status,
-              writers: d.writers,
-              producers: d.producers,
-              featuredArtists: d.featuredArtists,
-            });
-          }
-          loaded = DEFAULT_DRAFTS;
-        } else {
-          loaded = local.map(d => ({
-            id: d.id,
-            title: d.title,
-            content: d.content,
-            targetTemplate: d.targetTemplate,
-            syllableTolerance: d.syllableTolerance ?? 1,
-            createdAt: Date.parse(d.createdAt) || Date.now(),
-            updatedAt: d.updatedAt ? Date.parse(d.updatedAt) : Date.now(),
-            status: d.status || 'Demo',
-            writers: d.writers || [],
-            producers: d.producers || [],
-            featuredArtists: d.featuredArtists || [],
-          }));
-        }
-      } catch (e) {
-        console.error('IndexedDB load failed', e);
-        loaded = DEFAULT_DRAFTS;
+        console.error('Failed to load projects:', e);
       }
     }
 
@@ -453,7 +390,7 @@ export function useDrafts(session: any) {
 
     setIsSaving(false);
     setIsLoading(false);
-  }, [useLocalMode, session, getAuthHeaders]);
+  }, [session, getAuthHeaders]);
 
   // Initial load
   useEffect(() => {
@@ -527,28 +464,7 @@ export function useDrafts(session: any) {
     return drafts.find(d => d.id === activeDraftId) || null;
   }, [drafts, activeDraftId]);
 
-  // Auto-save local updates (IndexedDB fallback only, in cloud mode Yjs handles it)
-  useEffect(() => {
-    if (!activeDraft || isCloudMode) return;
-
-    setIsSaving(true);
-    const draft = { ...activeDraft, updatedAt: Date.now() };
-
-    const timer = setTimeout(async () => {
-      await saveLocalDraft({
-        ...draft,
-        createdAt: new Date(draft.createdAt).toISOString(),
-        updatedAt: new Date(draft.updatedAt).toISOString()
-      });
-      setIsSaving(false);
-    }, 1000);
-
-    return () => clearTimeout(timer);
-  }, [
-    activeDraft?.title,
-    activeDraft?.content,
-    isCloudMode
-  ]);
+  // Auto-save removed as app is purely cloud-based
 
   const selectDraft = useCallback((id: string | null) => {
     if (id === null || id === '') {
@@ -573,48 +489,36 @@ export function useDrafts(session: any) {
       featuredArtists: [],
     };
 
-    if (isCloudMode) {
-      try {
-        const res = await fetch('/api/projects', {
-          method: 'POST',
-          headers: getAuthHeaders(),
-          body: JSON.stringify({ title })
-        });
-        if (!res.ok) throw new Error('Cloud create failed');
-        const data = await res.json();
-        
-        const created: Draft = {
-          id: data.id,
-          title: data.title,
-          content: '',
-          targetTemplate: '',
-          syllableTolerance: 1,
-          createdAt: Date.parse(data.created_at) || Date.now(),
-          updatedAt: Date.parse(data.created_at) || Date.now(),
-          status: data.status || 'Demo',
-          writers: parseArray(data.writers),
-          producers: parseArray(data.producers),
-          featuredArtists: parseArray(data.featured_artists),
-        };
+    try {
+      const res = await fetch('/api/projects', {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ title })
+      });
+      if (!res.ok) throw new Error('Cloud create failed');
+      const data = await res.json();
+      
+      const created: Draft = {
+        id: data.id,
+        title: data.title,
+        content: '',
+        targetTemplate: '',
+        syllableTolerance: 1,
+        createdAt: Date.parse(data.created_at) || Date.now(),
+        updatedAt: Date.parse(data.created_at) || Date.now(),
+        status: data.status || 'Demo',
+        writers: parseArray(data.writers),
+        producers: parseArray(data.producers),
+        featuredArtists: parseArray(data.featured_artists),
+      };
 
-        setDrafts(prev => [created, ...prev]);
-        setActiveDraftId(created.id);
-        return created;
-      } catch (e) {
-        console.error('Failed to create project on cloud, writing locally', e);
-      }
+      setDrafts(prev => [created, ...prev]);
+      setActiveDraftId(created.id);
+      return created;
+    } catch (e) {
+      console.error('Failed to create project:', e);
+      throw e;
     }
-
-    // Local mode / fallback
-    setDrafts(prev => [newDraft, ...prev]);
-    setActiveDraftId(newDraft.id);
-    await saveLocalDraft({
-      ...newDraft,
-      createdAt: new Date(newDraft.createdAt).toISOString(),
-      updatedAt: new Date(newDraft.updatedAt).toISOString()
-    });
-
-    return newDraft;
   }, [isCloudMode, getAuthHeaders]);
 
   const updateActiveDraft = useCallback(async (updates: Partial<Omit<Draft, 'id' | 'createdAt'>>) => {
@@ -685,24 +589,7 @@ export function useDrafts(session: any) {
       }
     }
 
-    // Always mirror metadata updates to local IndexedDB for immediate local hydration and offline fallback
-    const currentDraft = draftsRef.current.find(d => d.id === activeDraftId);
-    if (currentDraft) {
-      const updatedLocal = {
-        ...currentDraft,
-        ...updates,
-        updatedAt: Date.now()
-      };
-      try {
-        await saveLocalDraft({
-          ...updatedLocal,
-          createdAt: new Date(updatedLocal.createdAt).toISOString(),
-          updatedAt: new Date(updatedLocal.updatedAt).toISOString()
-        });
-      } catch (e) {
-        console.error('Failed to save draft locally:', e);
-      }
-    }
+    // Offline / local IndexedDB mirroring removed
   }, [activeDraftId, yDoc, isCloudMode]);
 
   const deleteDraft = useCallback(async (id: string) => {
@@ -725,7 +612,6 @@ export function useDrafts(session: any) {
         console.error('Failed to delete on cloud:', e);
       }
     }
-    await deleteLocalDraft(id);
   }, [activeDraftId, isCloudMode, getAuthHeaders]);
 
   const renameDraft = useCallback(async (id: string, newTitle: string) => {
@@ -741,20 +627,6 @@ export function useDrafts(session: any) {
         if (error) throw error;
       } catch (e) {
         console.error('Failed to rename on cloud:', e);
-      }
-    } else {
-      try {
-        const local = draftsRef.current.find(d => d.id === id);
-        if (local) {
-          await saveLocalDraft({
-            ...local,
-            title: newTitle,
-            createdAt: new Date(local.createdAt).toISOString(),
-            updatedAt: new Date().toISOString()
-          });
-        }
-      } catch (e) {
-        console.error('Failed to rename locally:', e);
       }
     }
   }, [isCloudMode]);
@@ -773,14 +645,14 @@ export function useDrafts(session: any) {
     isSaving,
     isLoading,
     healthStatus,
-    useLocalMode,
+    useLocalMode: false,
     isCloudMode,
     yDoc,
     provider,
     isEditorFocused: false,
     setIsEditorFocused,
     syncActiveDraftWithRemote,
-    setUseLocalMode,
+    setUseLocalMode: () => {},
     checkHealth,
     selectDraft,
     createDraft,

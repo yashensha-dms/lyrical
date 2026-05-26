@@ -13,7 +13,6 @@ interface MobileLayoutProps {
   // App state
   activeDraft: Draft | null;
   healthStatus: 'checking' | 'connected' | 'disconnected';
-  useLocalMode: boolean;
   isCloudMode: boolean;
   yDoc?: Y.Doc | null;
   provider?: WebsocketProvider | null;
@@ -22,8 +21,6 @@ interface MobileLayoutProps {
   updateActiveDraft: (updates: Partial<Omit<Draft, 'id' | 'createdAt'>>) => void;
   exportAllDrafts: () => void;
   importDrafts: (jsonString: string) => boolean;
-  syncLocalToCloud: () => void;
-  setUseLocalMode: (v: boolean) => void;
   setIsEditorFocused: (v: boolean) => void;
   syncActiveDraftWithRemote: () => void;
   onSubconsciousActiveChange: (active: boolean) => void;
@@ -36,7 +33,6 @@ interface MobileLayoutProps {
 export const MobileLayout: React.FC<MobileLayoutProps> = ({
   activeDraft,
   healthStatus,
-  useLocalMode,
   isCloudMode,
   yDoc,
   provider,
@@ -44,8 +40,6 @@ export const MobileLayout: React.FC<MobileLayoutProps> = ({
   updateActiveDraft,
   exportAllDrafts,
   importDrafts,
-  syncLocalToCloud,
-  setUseLocalMode,
   setIsEditorFocused,
   syncActiveDraftWithRemote,
   onSubconsciousActiveChange,
@@ -90,15 +84,6 @@ export const MobileLayout: React.FC<MobileLayoutProps> = ({
       }`}>
         <div className="flex items-center gap-2">
           <span className="font-extrabold text-terracotta tracking-wider text-base">Lyrical</span>
-          {isCloudMode ? (
-            <span className="flex items-center gap-1 text-[9px] bg-paper border border-paper-darker text-[#10B981] px-1.5 py-0.5 rounded font-mono font-semibold">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#10B981]" /> Cloud
-            </span>
-          ) : (
-            <span className="flex items-center gap-1 text-[9px] bg-[#FEF3C7] border border-[#FDE68A] text-[#D97706] px-1.5 py-0.5 rounded font-mono font-semibold">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#D97706] animate-pulse" /> Local
-            </span>
-          )}
         </div>
         {/* Active song title */}
         {activeDraft && (
@@ -108,33 +93,13 @@ export const MobileLayout: React.FC<MobileLayoutProps> = ({
         )}
       </header>
 
-      {/* ── Offline / Sync Banners ── */}
-      {healthStatus === 'disconnected' && !useLocalMode && (
+      {/* ── Offline Warning Banner ── */}
+      {healthStatus === 'disconnected' && (
         <div className="bg-[#FEF3C7] text-ink border-b border-[#FDE68A] px-4 py-2 flex items-center justify-between text-xs font-medium flex-shrink-0">
           <div className="flex items-center gap-2">
             <AlertCircle className="w-4 h-4 text-[#D97706] flex-shrink-0" />
-            <span>Cloud offline.</span>
+            <span>Cloud offline. Changes will merge when online.</span>
           </div>
-          <button
-            onClick={() => setUseLocalMode(true)}
-            className="bg-[#D97706] hover:bg-[#B45309] text-white px-2 py-1 rounded text-[10px] uppercase font-bold tracking-wider transition cursor-pointer ml-2"
-          >
-            Go Local
-          </button>
-        </div>
-      )}
-      {healthStatus === 'connected' && useLocalMode && (
-        <div className="bg-terracotta-light text-ink border-b border-terracotta/20 px-4 py-2 flex items-center justify-between text-xs font-medium flex-shrink-0">
-          <div className="flex items-center gap-2">
-            <RefreshCw className="w-4 h-4 text-terracotta animate-spin flex-shrink-0" style={{ animationDuration: '3s' }} />
-            <span>Connection restored.</span>
-          </div>
-          <button
-            onClick={syncLocalToCloud}
-            className="bg-terracotta hover:bg-terracotta-hover text-white px-2 py-1 rounded text-[10px] uppercase font-bold tracking-wider transition cursor-pointer ml-2"
-          >
-            Sync
-          </button>
         </div>
       )}
 

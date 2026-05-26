@@ -38,19 +38,16 @@ function App() {
     isSaving,
     isLoading,
     healthStatus,
-    useLocalMode,
     isCloudMode,
     yDoc,
     provider,
     setIsEditorFocused,
     syncActiveDraftWithRemote,
-    setUseLocalMode,
     selectDraft,
     createDraft,
     updateActiveDraft,
     deleteDraft,
     renameDraft,
-    syncLocalToCloud,
     exportAllDrafts,
     importDrafts,
     loadDrafts,
@@ -225,7 +222,6 @@ function App() {
       <MobileLayout
         activeDraft={activeDraft}
         healthStatus={healthStatus}
-        useLocalMode={useLocalMode}
         isCloudMode={isCloudMode}
         yDoc={yDoc}
         provider={provider}
@@ -233,8 +229,6 @@ function App() {
         updateActiveDraft={updateActiveDraft}
         exportAllDrafts={exportAllDrafts}
         importDrafts={importDrafts}
-        syncLocalToCloud={syncLocalToCloud}
-        setUseLocalMode={setUseLocalMode}
         setIsEditorFocused={setIsEditorFocused}
         syncActiveDraftWithRemote={syncActiveDraftWithRemote}
         onSubconsciousActiveChange={setSubconsciousActive}
@@ -281,16 +275,6 @@ function App() {
           <span className="text-[10px] bg-paper-dark border border-paper-darker text-ink-muted px-1.5 py-0.5 rounded font-mono font-medium">
             {activeDraft?.title || 'Untitled Song'}
           </span>
-
-          {isCloudMode ? (
-            <span className="flex items-center gap-1 text-[9px] bg-[#EDF7F2] border border-[#BDE8D4] text-[#2D7A56] px-1.5 py-0.5 rounded font-mono font-semibold">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#2D7A56] animate-pulse"></span> Live
-            </span>
-          ) : (
-            <span className="flex items-center gap-1 text-[9px] bg-amber-light border border-[#F5DDA8] text-amber-DEFAULT px-1.5 py-0.5 rounded font-mono font-semibold">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-DEFAULT animate-pulse"></span> Local
-            </span>
-          )}
         </div>
 
         {/* Right: User + Sign Out */}
@@ -307,34 +291,12 @@ function App() {
       </header>
 
       {/* Offline Warning Banner */}
-      {healthStatus === 'disconnected' && !useLocalMode && (
+      {healthStatus === 'disconnected' && (
         <div className="bg-amber-light text-ink border-b border-[#F5DDA8] px-4 py-2 flex items-center justify-between text-xs font-medium flex-shrink-0 select-none">
           <div className="flex items-center gap-2">
             <AlertCircle className="w-4 h-4 text-amber-DEFAULT" />
-            <span>Database connection is offline. Cloud features are unavailable.</span>
+            <span>You are offline. Changes will automatically merge when database connection is restored.</span>
           </div>
-          <button
-            onClick={() => setUseLocalMode(true)}
-            className="bg-amber-DEFAULT hover:bg-amber-DEFAULT/80 text-white px-2.5 py-1 rounded text-[10px] uppercase font-bold tracking-wider transition cursor-pointer"
-          >
-            Switch to Local Mode
-          </button>
-        </div>
-      )}
-
-      {/* Sync Banner */}
-      {healthStatus === 'connected' && useLocalMode && (
-        <div className="bg-terracotta-light text-ink border-b border-terracotta/20 px-4 py-2 flex items-center justify-between text-xs font-medium flex-shrink-0 select-none">
-          <div className="flex items-center gap-2">
-            <RefreshCw className="w-4 h-4 text-terracotta animate-spin" style={{ animationDuration: '3s' }} />
-            <span>Database connection restored! You are currently using offline local storage.</span>
-          </div>
-          <button
-            onClick={syncLocalToCloud}
-            className="bg-terracotta hover:bg-terracotta-hover text-white px-2.5 py-1 rounded text-[10px] uppercase font-bold tracking-wider transition cursor-pointer"
-          >
-            Publish to Cloud
-          </button>
         </div>
       )}
 
