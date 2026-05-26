@@ -16,6 +16,38 @@ const PORT = process.env.PORT || 5001;
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 
+// Periodic cleanup of Yjs docs Map in case some docs are left dangling without active connections
+setInterval(() => {
+  try {
+    for (const [docName, doc] of docs.entries()) {
+      if (doc.conns.size === 0) {
+        console.log(`[Yjs GC] Cleaning up dangling doc: ${docName}`);
+        doc.destroy();
+        docs.delete(docName);
+      }
+    }
+  } catch (err) {
+    console.error('Error during Yjs docs cleanup:', err);
+  }
+}, 60000); // Check every 60 seconds
+
+// Token cache to avoid hitting Supabase auth rate limits on concurrent connection upgrades
+interface CachedUser {
+  user: any;
+  expiresAt: number;
+}
+const tokenCache = new Map<string, CachedUser>();
+
+// Clean up expired cache entries periodically
+setInterval(() => {
+  const now = Date.now();
+  for (const [token, cache] of tokenCache.entries()) {
+    if (now > cache.expiresAt) {
+      tokenCache.delete(token);
+    }
+  }
+}, 30000);
+
 // Simple inline debounce to prevent types and external dependency issues
 function debounce<T extends (...args: any[]) => void>(func: T, wait: number): (...args: Parameters<T>) => void {
   let timeout: ReturnType<typeof setTimeout> | null = null;
@@ -118,12 +150,21 @@ httpServer.on('upgrade', async (request, socket, head) => {
         return;
       }
 
-      // 1. Verify user with Supabase JWT
-      const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-      if (authError || !user) {
-        socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
-        socket.destroy();
-        return;
+      // 1. Verify user with Supabase JWT (checking cache first to prevent rate-limiting)
+      let user: any = null;
+      const cached = tokenCache.get(token);
+      const now = Date.now();
+      if (cached && now < cached.expiresAt) {
+        user = cached.user;
+      } else {
+        const { data: { user: dbUser }, error: authError } = await supabase.auth.getUser(token);
+        if (authError || !dbUser) {
+          socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+          socket.destroy();
+          return;
+        }
+        user = dbUser;
+        tokenCache.set(token, { user, expiresAt: now + 60000 }); // Cache for 60 seconds
       }
 
       // 2. Check if user owns the project
