@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { X, Check, Edit2, Plus, Save } from 'lucide-react';
 import * as Select from '@radix-ui/react-select';
+import { useForm, Controller } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import * as z from 'zod';
 import { supabase } from '../utils/supabaseClient';
 import type { Draft } from '../hooks/useDrafts';
 
@@ -9,10 +12,22 @@ interface ProjectInfoPanelProps {
   updateActiveDraft: (updates: Partial<Omit<Draft, 'id' | 'createdAt'>>) => void;
 }
 
+// ── Zod Validation Schema ────────────────────────────────────────────────────
+const projectInfoSchema = z.object({
+  title: z
+    .string()
+    .trim()
+    .min(1, 'Song title is required')
+    .max(100, 'Title cannot exceed 100 characters'),
+  status: z.enum(['Demo', 'In Progress', 'Final', 'Released']),
+  writers: z.array(z.string()),
+  producers: z.array(z.string()),
+  featuredArtists: z.array(z.string()),
+});
+
+type ProjectInfoFormValues = z.infer<typeof projectInfoSchema>;
+
 // ── Multi-entry tag input ──────────────────────────────────────────────────
-// Each saved tag is shown as a chip with an ✕ remove button.
-// A single text input sits below; clicking "+" commits the value and resets
-// the input so the user can type the next entry.
 interface TagInputProps {
   label: string;
   tags: string[];
@@ -106,19 +121,31 @@ export const ProjectInfoPanel: React.FC<ProjectInfoPanelProps> = ({
   activeDraft,
   updateActiveDraft,
 }) => {
-  // ── Local shadow state (committed on Save) ─────────────────────────────
-  const [title, setTitle] = useState(activeDraft.title);
-  const [status, setStatus] = useState(activeDraft.status || 'Demo');
-  const [writers, setWriters] = useState<string[]>(activeDraft.writers || []);
-  const [producers, setProducers] = useState<string[]>(activeDraft.producers || []);
-  const [featuredArtists, setFeaturedArtists] = useState<string[]>(
-    activeDraft.featuredArtists || [],
-  );
-  const [isDirty, setIsDirty] = useState(false);
-
-  // Inline title editing
+  // Inline title editing state
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const titleInputRef = useRef<HTMLInputElement>(null);
+
+  // Initialize React Hook Form with Zod resolver
+  const {
+    register,
+    handleSubmit,
+    control,
+    setValue,
+    watch,
+    reset,
+    formState: { isDirty, errors },
+  } = useForm<ProjectInfoFormValues>({
+    resolver: zodResolver(projectInfoSchema),
+    defaultValues: {
+      title: activeDraft.title,
+      status: (activeDraft.status as any) || 'Demo',
+      writers: activeDraft.writers || [],
+      producers: activeDraft.producers || [],
+      featuredArtists: activeDraft.featuredArtists || [],
+    },
+  });
+
+  const formTitle = watch('title');
 
   // Load project metadata from REST API when project opens
   useEffect(() => {
@@ -133,18 +160,19 @@ export const ProjectInfoPanel: React.FC<ProjectInfoPanelProps> = ({
         const res = await fetch(`/api/projects/${activeDraft.id}`, {
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          }
+            'Authorization': `Bearer ${token}`,
+          },
         });
         if (res.ok) {
           const data = await res.json();
           if (isMounted) {
-            setTitle(data.title || '');
-            setStatus(data.status || 'Demo');
-            setWriters(Array.isArray(data.writers) ? data.writers : []);
-            setProducers(Array.isArray(data.producers) ? data.producers : []);
-            setFeaturedArtists(Array.isArray(data.featured_artists) ? data.featured_artists : []);
-            setIsDirty(false);
+            reset({
+              title: data.title || '',
+              status: data.status || 'Demo',
+              writers: Array.isArray(data.writers) ? data.writers : [],
+              producers: Array.isArray(data.producers) ? data.producers : [],
+              featuredArtists: Array.isArray(data.featured_artists) ? data.featured_artists : [],
+            });
           }
         }
       } catch (err) {
@@ -152,27 +180,28 @@ export const ProjectInfoPanel: React.FC<ProjectInfoPanelProps> = ({
       }
     }
 
-    // Set initial loading values from prop
-    setTitle(activeDraft.title);
-    setStatus(activeDraft.status || 'Demo');
-    setWriters(activeDraft.writers || []);
-    setProducers(activeDraft.producers || []);
-    setFeaturedArtists(activeDraft.featuredArtists || []);
-    setIsDirty(false);
+    // Set initial values from prop
+    reset({
+      title: activeDraft.title,
+      status: (activeDraft.status as any) || 'Demo',
+      writers: activeDraft.writers || [],
+      producers: activeDraft.producers || [],
+      featuredArtists: activeDraft.featuredArtists || [],
+    });
 
     loadInfo();
 
     return () => {
       isMounted = false;
     };
-  }, [activeDraft.id]);
+  }, [activeDraft.id, reset]);
 
   // Sync title changes from activeDraft (Yjs collaboration)
   useEffect(() => {
     if (!isEditingTitle && !isDirty) {
-      setTitle(activeDraft.title);
+      setValue('title', activeDraft.title);
     }
-  }, [activeDraft.title, isEditingTitle, isDirty]);
+  }, [activeDraft.title, isEditingTitle, isDirty, setValue]);
 
   useEffect(() => {
     if (isEditingTitle && titleInputRef.current) {
@@ -181,38 +210,36 @@ export const ProjectInfoPanel: React.FC<ProjectInfoPanelProps> = ({
     }
   }, [isEditingTitle]);
 
-  // Mark dirty whenever any local field changes
-  const markDirty = () => setIsDirty(true);
-
   const handleTitleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') setIsEditingTitle(false);
     if (e.key === 'Escape') {
-      setTitle(activeDraft.title);
+      setValue('title', activeDraft.title);
       setIsEditingTitle(false);
     }
   };
 
-  // ── Save ────────────────────────────────────────────────────────────────
-  const handleSave = () => {
-    const trimmedTitle = title.trim() || activeDraft.title;
+  // ── Save handler using handleSubmit from react-hook-form ──────────────────
+  const onSubmit = (data: ProjectInfoFormValues) => {
     updateActiveDraft({
-      title: trimmedTitle,
-      status,
-      writers,
-      producers,
-      featuredArtists,
+      title: data.title,
+      status: data.status,
+      writers: data.writers,
+      producers: data.producers,
+      featuredArtists: data.featuredArtists,
     });
-    setTitle(trimmedTitle);
-    setIsDirty(false);
+    // Reset form states to clean, tracking the newly saved values
+    reset(data);
   };
 
-  const statuses = ['Demo', 'In Progress', 'Final', 'Released'];
+  const statuses = ['Demo', 'In Progress', 'Final', 'Released'] as const;
 
   return (
-    <div className="flex-1 flex flex-col min-h-0 bg-transparent text-ink select-none">
+    <form
+      onSubmit={handleSubmit(onSubmit)}
+      className="flex-1 flex flex-col min-h-0 bg-transparent text-ink select-none"
+    >
       {/* Scrollable form area */}
       <div className="flex-1 overflow-y-auto p-4 space-y-6">
-
         {/* Song Title */}
         <div className="space-y-2">
           <label className="block text-xs font-semibold text-ink-muted uppercase tracking-wider">
@@ -221,16 +248,19 @@ export const ProjectInfoPanel: React.FC<ProjectInfoPanelProps> = ({
           {isEditingTitle ? (
             <div className="flex items-center gap-2">
               <input
-                ref={titleInputRef}
                 type="text"
-                value={title}
-                onChange={(e) => { setTitle(e.target.value); markDirty(); }}
+                {...register('title')}
+                ref={(e) => {
+                  register('title').ref(e);
+                  (titleInputRef as any).current = e;
+                }}
                 onKeyDown={handleTitleKeyDown}
                 onBlur={() => setIsEditingTitle(false)}
                 className="flex-1 bg-paper border border-terracotta rounded px-3 py-1.5 text-sm font-semibold text-ink focus:outline-none transition select-text"
                 spellCheck={false}
               />
               <button
+                type="button"
                 onClick={() => setIsEditingTitle(false)}
                 className="p-1.5 bg-terracotta text-white rounded hover:bg-terracotta-hover transition cursor-pointer"
                 title="Confirm Title"
@@ -245,10 +275,15 @@ export const ProjectInfoPanel: React.FC<ProjectInfoPanelProps> = ({
               title="Click to edit title"
             >
               <span className="font-serif font-bold text-lg text-ink truncate mr-2">
-                {title || 'Untitled Song'}
+                {formTitle || 'Untitled Song'}
               </span>
               <Edit2 className="w-3.5 h-3.5 text-ink-light group-hover:text-ink-muted transition flex-shrink-0" />
             </div>
+          )}
+          {errors.title && (
+            <span className="text-[10px] text-terracotta font-semibold mt-1 block">
+              {errors.title.message}
+            </span>
           )}
         </div>
 
@@ -257,65 +292,74 @@ export const ProjectInfoPanel: React.FC<ProjectInfoPanelProps> = ({
           <label className="block text-xs font-semibold text-ink-muted uppercase tracking-wider">
             Status
           </label>
-          <Select.Root
-            value={status}
-            onValueChange={(val) => { setStatus(val); markDirty(); }}
-          >
-            <Select.Trigger
-              className="w-full flex items-center justify-between bg-paper border border-paper-darker rounded px-3 py-2 text-xs text-ink focus:outline-none focus:border-terracotta transition select-none cursor-pointer"
-              aria-label="Project Status"
-            >
-              <Select.Value />
-              <Select.Icon>
-                <Plus className="w-4 h-4 text-ink-muted rotate-45 transform" />
-              </Select.Icon>
-            </Select.Trigger>
+          <Controller
+            name="status"
+            control={control}
+            render={({ field }) => (
+              <Select.Root value={field.value} onValueChange={field.onChange}>
+                <Select.Trigger
+                  className="w-full flex items-center justify-between bg-paper border border-paper-darker rounded px-3 py-2 text-xs text-ink focus:outline-none focus:border-terracotta transition select-none cursor-pointer"
+                  aria-label="Project Status"
+                >
+                  <Select.Value />
+                  <Select.Icon>
+                    <Plus className="w-4 h-4 text-ink-muted rotate-45 transform" />
+                  </Select.Icon>
+                </Select.Trigger>
 
-            <Select.Portal>
-              <Select.Content className="radix-menu-content z-50">
-                <Select.ScrollUpButton className="flex items-center justify-center h-6 bg-paper text-ink cursor-default" />
-                <Select.Viewport className="p-1">
-                  {statuses.map((s) => (
-                    <Select.Item key={s} value={s} className="radix-menu-item">
-                      <Select.ItemText>{s}</Select.ItemText>
-                      <Select.ItemIndicator>
-                        <Check className="w-4 h-4 text-terracotta" />
-                      </Select.ItemIndicator>
-                    </Select.Item>
-                  ))}
-                </Select.Viewport>
-                <Select.ScrollDownButton className="flex items-center justify-center h-6 bg-paper text-ink cursor-default" />
-              </Select.Content>
-            </Select.Portal>
-          </Select.Root>
+                <Select.Portal>
+                  <Select.Content className="radix-menu-content z-50">
+                    <Select.ScrollUpButton className="flex items-center justify-center h-6 bg-paper text-ink cursor-default" />
+                    <Select.Viewport className="p-1">
+                      {statuses.map((s) => (
+                        <Select.Item key={s} value={s} className="radix-menu-item">
+                          <Select.ItemText>{s}</Select.ItemText>
+                          <Select.ItemIndicator>
+                            <Check className="w-4 h-4 text-terracotta" />
+                          </Select.ItemIndicator>
+                        </Select.Item>
+                      ))}
+                    </Select.Viewport>
+                    <Select.ScrollDownButton className="flex items-center justify-center h-6 bg-paper text-ink cursor-default" />
+                  </Select.Content>
+                </Select.Portal>
+              </Select.Root>
+            )}
+          />
         </div>
 
         {/* Writers */}
-        <TagInput
-          label="Writers"
-          tags={writers}
-          onChange={(t) => { setWriters(t); markDirty(); }}
+        <Controller
+          name="writers"
+          control={control}
+          render={({ field }) => (
+            <TagInput label="Writers" tags={field.value} onChange={field.onChange} />
+          )}
         />
 
         {/* Producers */}
-        <TagInput
-          label="Producers"
-          tags={producers}
-          onChange={(t) => { setProducers(t); markDirty(); }}
+        <Controller
+          name="producers"
+          control={control}
+          render={({ field }) => (
+            <TagInput label="Producers" tags={field.value} onChange={field.onChange} />
+          )}
         />
 
         {/* Featured Artists */}
-        <TagInput
-          label="Featured Artists"
-          tags={featuredArtists}
-          onChange={(t) => { setFeaturedArtists(t); markDirty(); }}
+        <Controller
+          name="featuredArtists"
+          control={control}
+          render={({ field }) => (
+            <TagInput label="Featured Artists" tags={field.value} onChange={field.onChange} />
+          )}
         />
       </div>
 
       {/* ── Sticky Save bar ─────────────────────────────────────────────── */}
       <div className="border-t border-paper-darker px-4 py-3 bg-paper flex-shrink-0">
         <button
-          onClick={handleSave}
+          type="submit"
           disabled={!isDirty}
           className={`w-full flex items-center justify-center gap-2 rounded px-4 py-2 text-xs font-semibold tracking-wide transition-all ${
             isDirty
@@ -327,6 +371,6 @@ export const ProjectInfoPanel: React.FC<ProjectInfoPanelProps> = ({
           {isDirty ? 'Save Changes' : 'No Changes'}
         </button>
       </div>
-    </div>
+    </form>
   );
 };

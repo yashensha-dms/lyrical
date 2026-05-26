@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
+import { BubbleMenu, FloatingMenu } from '@tiptap/react/menus';
 import StarterKit from '@tiptap/starter-kit';
 import Image from '@tiptap/extension-image';
 import Youtube from '@tiptap/extension-youtube';
 import { supabase } from '../utils/supabaseClient';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Bold, Italic, Strikethrough, Heading1, Heading2, List, Quote } from 'lucide-react';
 
 function getImagesFromJSON(node: any): string[] {
   if (!node) return [];
@@ -308,6 +309,104 @@ export const ScrapbookPanel: React.FC<ScrapbookPanelProps> = ({ projectId }) => 
         </div>
       ) : (
         <div className="flex-1 flex flex-col min-h-0 overflow-y-auto paper-lines relative">
+          {editor && (
+            <BubbleMenu editor={editor}>
+              <div className="flex items-center gap-0.5 bg-paper-dark border border-paper-darker rounded shadow-paper-md px-1.5 py-1 select-none">
+                <button
+                  type="button"
+                  onClick={() => editor.chain().focus().toggleBold().run()}
+                  className={`p-1 rounded transition-colors duration-150 cursor-pointer ${
+                    editor.isActive('bold')
+                      ? 'bg-terracotta text-white'
+                      : 'text-ink-muted hover:text-ink hover:bg-paper-active'
+                  }`}
+                  title="Bold"
+                >
+                  <Bold className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => editor.chain().focus().toggleItalic().run()}
+                  className={`p-1 rounded transition-colors duration-150 cursor-pointer ${
+                    editor.isActive('italic')
+                      ? 'bg-terracotta text-white'
+                      : 'text-ink-muted hover:text-ink hover:bg-paper-active'
+                  }`}
+                  title="Italic"
+                >
+                  <Italic className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => editor.chain().focus().toggleStrike().run()}
+                  className={`p-1 rounded transition-colors duration-150 cursor-pointer ${
+                    editor.isActive('strike')
+                      ? 'bg-terracotta text-white'
+                      : 'text-ink-muted hover:text-ink hover:bg-paper-active'
+                  }`}
+                  title="Strikethrough"
+                >
+                  <Strikethrough className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </BubbleMenu>
+          )}
+
+          {editor && (
+            <FloatingMenu editor={editor}>
+              <div className="flex items-center gap-0.5 bg-paper-dark border border-paper-darker rounded shadow-paper-md px-1.5 py-1 select-none">
+                <button
+                  type="button"
+                  onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
+                  className={`p-1 rounded transition-colors duration-150 cursor-pointer ${
+                    editor.isActive('heading', { level: 1 })
+                      ? 'bg-terracotta text-white'
+                      : 'text-ink-muted hover:text-ink hover:bg-paper-active'
+                  }`}
+                  title="Heading 1"
+                >
+                  <Heading1 className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
+                  className={`p-1 rounded transition-colors duration-150 cursor-pointer ${
+                    editor.isActive('heading', { level: 2 })
+                      ? 'bg-terracotta text-white'
+                      : 'text-ink-muted hover:text-ink hover:bg-paper-active'
+                  }`}
+                  title="Heading 2"
+                >
+                  <Heading2 className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => editor.chain().focus().toggleBulletList().run()}
+                  className={`p-1 rounded transition-colors duration-150 cursor-pointer ${
+                    editor.isActive('bulletList')
+                      ? 'bg-terracotta text-white'
+                      : 'text-ink-muted hover:text-ink hover:bg-paper-active'
+                  }`}
+                  title="Bullet List"
+                >
+                  <List className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => editor.chain().focus().toggleBlockquote().run()}
+                  className={`p-1 rounded transition-colors duration-150 cursor-pointer ${
+                    editor.isActive('blockquote')
+                      ? 'bg-terracotta text-white'
+                      : 'text-ink-muted hover:text-ink hover:bg-paper-active'
+                  }`}
+                  title="Blockquote"
+                >
+                  <Quote className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </FloatingMenu>
+          )}
+
           <EditorContent editor={editor} className="flex-1 h-full min-h-0" />
           
           {uploadingImage && (

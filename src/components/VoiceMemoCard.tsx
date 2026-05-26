@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import WaveSurfer from 'wavesurfer.js';
+import { useWavesurfer } from '@wavesurfer/react';
 import { Play, Pause, Trash2, Loader2 } from 'lucide-react';
 import { supabase } from '../utils/supabaseClient';
 
@@ -25,73 +25,54 @@ export const VoiceMemoCard: React.FC<VoiceMemoCardProps> = ({
   onDelete,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
-  const wavesurferRef = useRef<WaveSurfer | null>(null);
   const [isReady, setIsReady] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  // Keep track of the loaded URL to prevent rebuilding when switching from optimistic blob to remote URL
-  const loadedUrlRef = useRef<string>('');
+  const { wavesurfer } = useWavesurfer({
+    container: containerRef,
+    url: memo.audio_url,
+    waveColor: '#D3C9C0', // Warm ink-light / paper-darker color
+    progressColor: '#C0694E', // Terracotta progress color
+    height: 36,
+    barWidth: 2,
+    barGap: 3,
+    cursorWidth: 0,
+  });
 
   useEffect(() => {
-    if (!containerRef.current || !memo.audio_url) return;
+    if (!wavesurfer) return;
 
-    // If we've already loaded a local blob URL and the new URL is a remote one, don't reload
-    if (loadedUrlRef.current && loadedUrlRef.current.startsWith('blob:') && !memo.audio_url.startsWith('blob:')) {
-      // Just update our ref to the remote URL for future reference
-      loadedUrlRef.current = memo.audio_url;
-      return;
-    }
-
-    loadedUrlRef.current = memo.audio_url;
-    setIsReady(false);
-
-    // Create Wavesurfer instance
-    const ws = WaveSurfer.create({
-      container: containerRef.current,
-      waveColor: '#D3C9C0', // Warm ink-light / paper-darker color
-      progressColor: '#C0694E', // Terracotta progress color
-      height: 36,
-      barWidth: 2,
-      barGap: 3,
-      cursorWidth: 0,
-    });
-
-    wavesurferRef.current = ws;
-
-    // Load public audio URL or blob URL
-    ws.load(memo.audio_url);
-
-    ws.on('ready', () => {
+    const handleReady = () => {
       setIsReady(true);
-    });
+    };
 
-    ws.on('finish', () => {
-      // Toggle play state in parent when it finishes playing
+    const handleFinish = () => {
       if (isPlaying) {
         onPlayToggle();
       }
-    });
+    };
+
+    wavesurfer.on('ready', handleReady);
+    wavesurfer.on('finish', handleFinish);
 
     return () => {
-      if (wavesurferRef.current) {
-        wavesurferRef.current.destroy();
-        wavesurferRef.current = null;
-      }
+      wavesurfer.un('ready', handleReady);
+      wavesurfer.un('finish', handleFinish);
     };
-  }, [memo.audio_url]);
+  }, [wavesurfer, isPlaying, onPlayToggle]);
 
   // Synchronize playback with isPlaying prop
   useEffect(() => {
-    if (!wavesurferRef.current || !isReady) return;
+    if (!wavesurfer || !isReady) return;
 
     if (isPlaying) {
-      wavesurferRef.current.play().catch((err) => {
+      wavesurfer.play().catch((err) => {
         console.error('Playback error:', err);
       });
     } else {
-      wavesurferRef.current.pause();
+      wavesurfer.pause();
     }
-  }, [isPlaying, isReady]);
+  }, [isPlaying, isReady, wavesurfer]);
 
   const handleDelete = async () => {
     if (isDeleting) return;

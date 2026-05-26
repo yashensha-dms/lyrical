@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { PenLine, Library, AlertCircle, RefreshCw, Info } from 'lucide-react';
+import { PenLine, Library, AlertCircle, Info } from 'lucide-react';
 import { Sidebar } from './Sidebar';
 import { Notepad } from './Notepad';
 import { ProjectInfoPanel } from './ProjectInfoPanel';

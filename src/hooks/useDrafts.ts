@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import * as Y from 'yjs';
 import { WebsocketProvider } from 'y-websocket';
-import { getLocalDrafts, saveLocalDraft, deleteLocalDraft } from '../utils/indexedDb';
 import { supabase } from '../utils/supabaseClient';
 
 const parseArray = (val: any): string[] => {
@@ -31,31 +30,6 @@ export interface Draft {
 }
 
 const ACTIVE_DRAFT_KEY = 'lyrical_active_draft_id_v2';
-
-const DEFAULT_DRAFTS: Draft[] = [
-  {
-    id: 'welcome-draft',
-    title: 'Dancing in the Static',
-    content: `[Verse 1]
-We talk in circles through the night
-Watch the colors fade to gray
-You whisper words to make it right
-But you've got nothing left to say
-
-[Chorus]
-We're just dancing in the static
-Hoping for a spark of light
-Yeah it's tragic and dramatic
-But we're holding on tonight`,
-    targetTemplate: '',
-    createdAt: Date.now() - 3600000,
-    updatedAt: Date.now() - 3600000,
-    status: 'Demo',
-    writers: [],
-    producers: [],
-    featuredArtists: [],
-  }
-];
 
 export function useDrafts(session: any) {
   const [drafts, setDrafts] = useState<Draft[]>([]);
@@ -475,20 +449,6 @@ export function useDrafts(session: any) {
   }, [drafts]);
 
   const createDraft = useCallback(async (title: string = 'Untitled Song') => {
-    const newDraft: Draft = {
-      id: `draft-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      title,
-      content: '',
-      targetTemplate: '',
-      syllableTolerance: 1,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-      status: 'Demo',
-      writers: [],
-      producers: [],
-      featuredArtists: [],
-    };
-
     try {
       const res = await fetch('/api/projects', {
         method: 'POST',
