@@ -1,11 +1,11 @@
 import React from 'react';
-import { Info, PanelLeftClose, PanelLeft, BookOpen, Mic, Search } from 'lucide-react';
+import { Info, PanelLeftClose, PanelLeft, BookOpen, Mic, Search, Activity, Shuffle } from 'lucide-react';
 
 interface RightActivityBarProps {
   isSidebarOpen: boolean;
   setIsSidebarOpen: (open: boolean) => void;
-  activePanel: 'info' | 'scrapbook' | 'audio' | 'rhyme';
-  setActivePanel: (panel: 'info' | 'scrapbook' | 'audio' | 'rhyme') => void;
+  activePanel: 'info' | 'scrapbook' | 'audio' | 'rhyme' | 'density' | 'swap';
+  setActivePanel: (panel: 'info' | 'scrapbook' | 'audio' | 'rhyme' | 'density' | 'swap') => void;
 }
 
 export const RightActivityBar: React.FC<RightActivityBarProps> = ({
@@ -14,7 +14,7 @@ export const RightActivityBar: React.FC<RightActivityBarProps> = ({
   activePanel,
   setActivePanel,
 }) => {
-  const handleItemClick = (panel: 'info' | 'scrapbook' | 'audio' | 'rhyme') => {
+  const handleItemClick = (panel: 'info' | 'scrapbook' | 'audio' | 'rhyme' | 'density' | 'swap') => {
     if (activePanel === panel && isSidebarOpen) {
       setIsSidebarOpen(false);
     } else {
@@ -96,6 +96,32 @@ export const RightActivityBar: React.FC<RightActivityBarProps> = ({
           aria-label="Rhyme Finder"
         >
           <Search className="w-5 h-5 stroke-[1.5]" />
+        </button>
+
+        <button
+          onClick={() => handleItemClick('density')}
+          className={`w-10 h-10 rounded-lg flex items-center justify-center transition-all duration-200 cursor-pointer ${
+            isSidebarOpen && activePanel === 'density'
+              ? 'bg-paper-darker text-terracotta shadow-inner'
+              : 'text-ink-muted hover:text-ink hover:bg-paper-active/50'
+          }`}
+          title="Rhyme Density Scorer"
+          aria-label="Rhyme Density Scorer"
+        >
+          <Activity className="w-5 h-5 stroke-[1.5]" />
+        </button>
+
+        <button
+          onClick={() => handleItemClick('swap')}
+          className={`w-10 h-10 rounded-lg flex items-center justify-center transition-all duration-200 cursor-pointer ${
+            isSidebarOpen && activePanel === 'swap'
+              ? 'bg-paper-darker text-terracotta shadow-inner'
+              : 'text-ink-muted hover:text-ink hover:bg-paper-active/50'
+          }`}
+          title="Phonetic Word Swap"
+          aria-label="Phonetic Word Swap"
+        >
+          <Shuffle className="w-5 h-5 stroke-[1.5]" />
         </button>
       </div>
 

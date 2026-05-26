@@ -4,13 +4,15 @@ import { ProjectInfoPanel } from './ProjectInfoPanel';
 import { ScrapbookPanel } from './ScrapbookPanel';
 import { VoiceMemosPanel } from './VoiceMemosPanel';
 import { RhymePanel } from './RhymePanel';
+import { RhymeDensityPanel } from './RhymeDensityPanel';
+import { PhoneticSwapPanel } from './PhoneticSwapPanel';
 import type { Draft } from '../hooks/useDrafts';
 
 interface RightPanelProps {
   activeDraft: Draft;
   updateActiveDraft: (updates: Partial<Omit<Draft, 'id' | 'createdAt'>>) => void;
   setIsSidebarOpen: (open: boolean) => void;
-  activePanel: 'info' | 'scrapbook' | 'audio' | 'rhyme';
+  activePanel: 'info' | 'scrapbook' | 'audio' | 'rhyme' | 'density' | 'swap';
   lookupWord: string | null;
   rhymeResults: any | null;
   loadingRhymes: boolean;
@@ -41,6 +43,10 @@ export const RightPanel: React.FC<RightPanelProps> = ({
         return 'Voice Memos';
       case 'rhyme':
         return 'Rhyme Finder';
+      case 'density':
+        return 'Rhyme Density';
+      case 'swap':
+        return 'Word Swap';
       default:
         return '';
     }
@@ -72,7 +78,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({
         <ScrapbookPanel projectId={activeDraft.id} />
       ) : activePanel === 'audio' ? (
         <VoiceMemosPanel projectId={activeDraft.id} />
-      ) : (
+      ) : activePanel === 'rhyme' ? (
         <RhymePanel
           lookupWord={lookupWord}
           data={rhymeResults}
@@ -81,6 +87,10 @@ export const RightPanel: React.FC<RightPanelProps> = ({
           onClear={onClearRhymes}
           onSearch={onSearchRhymes}
         />
+      ) : activePanel === 'density' ? (
+        <RhymeDensityPanel />
+      ) : (
+        <PhoneticSwapPanel />
       )}
     </div>
   );

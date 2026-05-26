@@ -331,6 +331,68 @@ app.get('/api/synonyms', async (req, res) => {
   }
 });
 
+// GET /api/rhyme-density forwarding to FastAPI service
+app.get('/api/rhyme-density', async (req, res) => {
+  const { line } = req.query;
+  if (!line || typeof line !== 'string') {
+    return res.json({
+      line: '',
+      density: 0.0,
+      rhyming_syllables: 0,
+      total_syllables: 0,
+      status: 'under-rhymed',
+      message: 'your line sits at 0.0 — under-rhymed (0.22–0.44)'
+    });
+  }
+
+  try {
+    const response = await fetch(`http://127.0.0.1:8001/rhyme-density?line=${encodeURIComponent(line)}`);
+    if (!response.ok) {
+      throw new Error(`FastAPI returned status ${response.status}`);
+    }
+    const data = await response.json();
+    res.json(data);
+  } catch (error) {
+    console.error('FastAPI service is unavailable, returning fallback:', error);
+    res.json({
+      line,
+      density: 0.0,
+      rhyming_syllables: 0,
+      total_syllables: 0,
+      status: 'under-rhymed',
+      message: 'your line sits at 0.0 — under-rhymed (0.22–0.44)'
+    });
+  }
+});
+
+// GET /api/phonetic-swap forwarding to FastAPI service
+app.get('/api/phonetic-swap', async (req, res) => {
+  const { word } = req.query;
+  if (!word || typeof word !== 'string') {
+    return res.json({
+      word: '',
+      phonemes: '',
+      results: []
+    });
+  }
+
+  try {
+    const response = await fetch(`http://127.0.0.1:8001/phonetic-swap?word=${encodeURIComponent(word)}`);
+    if (!response.ok) {
+      throw new Error(`FastAPI returned status ${response.status}`);
+    }
+    const data = await response.json();
+    res.json(data);
+  } catch (error) {
+    console.error('FastAPI service is unavailable, returning empty list:', error);
+    res.json({
+      word,
+      phonemes: '',
+      results: []
+    });
+  }
+});
+
 // 1. Get all projects belonging to logged in user (owned or collaborating)
 app.get('/api/projects', authenticateUser, async (req, res) => {
   try {

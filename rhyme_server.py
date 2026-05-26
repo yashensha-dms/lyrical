@@ -5,11 +5,12 @@ import pronouncing
 from pydantic import BaseModel
 from typing import List
 
-# Global DB connection and cached unique endings, and SentenceTransformer model
+# Global DB connection, cached unique endings, SentenceTransformer model, and phoneme profiles
 mem_conn = None
 unique_word_endings = []
 unique_bigram_endings = []
 sentence_model = None
+word_phoneme_profiles = []
 
 # ── Phonetic & Phoneme Distance Logic ─────────────────────────────────────────
 
@@ -90,7 +91,7 @@ def phoneme_distance(seq1, seq2):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global mem_conn, unique_word_endings, unique_bigram_endings, sentence_model
+    global mem_conn, unique_word_endings, unique_bigram_endings, sentence_model, word_phoneme_profiles
     print("Loading rhyme_data.db into memory...")
     disk_conn = sqlite3.connect("rhyme_data.db")
     mem_conn = sqlite3.connect(":memory:", check_same_thread=False)
@@ -104,6 +105,22 @@ async def lifespan(app: FastAPI):
     
     cursor.execute("SELECT DISTINCT rhyme_ending FROM bigrams")
     unique_bigram_endings = [r[0] for r in cursor.fetchall() if r[0]]
+
+    # Pre-cache word phoneme profiles for fast phonetic swapping
+    print("Caching word phoneme profiles...")
+    cursor.execute("SELECT word, phonemes, frequency FROM words")
+    word_phoneme_profiles = []
+    for w, ph, freq in cursor.fetchall():
+        phones = ph.split()
+        vowels = [clean_phoneme(p) for p in phones if clean_phoneme(p) in VOWELS]
+        word_phoneme_profiles.append({
+            "word": w,
+            "phonemes": phones,
+            "vowels": vowels,
+            "syllables": len(vowels),
+            "frequency": freq
+        })
+    print(f"Cached {len(word_phoneme_profiles)} word phoneme profiles.")
     
     # Load SentenceTransformer model
     try:
@@ -266,6 +283,220 @@ def semantic_search(req: SemanticSearchRequest):
         
     scored.sort(key=lambda x: x["score"], reverse=True)
     return {"query": req.query, "results": scored}
+
+# ── Rhyme Density & Phonetic Swap Engines ──────────────────────────────────────
+
+import re
+import math
+
+CMU_PHONEMES = {
+    'AA', 'AE', 'AH', 'AO', 'AW', 'AY', 'EH', 'ER', 'EY', 'IH', 'IY', 'OW', 'OY', 'UH', 'UW', 'AX',
+    'B', 'CH', 'D', 'DH', 'F', 'G', 'HH', 'JH', 'K', 'L', 'M', 'N', 'NG', 'P', 'R', 'S', 'SH', 'T', 'TH', 'V', 'W', 'Y', 'Z', 'ZH'
+}
+
+GIBBERISH_VOWELS = {
+    'a': 'AE', 'e': 'EH', 'i': 'IH', 'o': 'AA', 'u': 'AH', 'y': 'IY',
+    'aa': 'AA', 'ae': 'AE', 'ai': 'AY', 'ao': 'AO', 'au': 'AW', 'aw': 'AW',
+    'ay': 'AY', 'ee': 'IY', 'ei': 'EY', 'ey': 'EY', 'ie': 'IY', 'oa': 'OW',
+    'oe': 'OW', 'oi': 'OY', 'oo': 'UW', 'ou': 'OW', 'ow': 'AW', 'oy': 'OY',
+    'ue': 'UW', 'ui': 'UW', 'uy': 'AY'
+}
+GIBBERISH_CONSONANTS = {
+    'b': 'B', 'c': 'K', 'd': 'D', 'f': 'F', 'g': 'G', 'h': 'HH',
+    'j': 'JH', 'k': 'K', 'l': 'L', 'm': 'M', 'n': 'N', 'p': 'P',
+    'q': 'K', 'r': 'R', 's': 'S', 't': 'T', 'v': 'V', 'w': 'W',
+    'x': 'K S', 'z': 'Z', 'ch': 'CH', 'sh': 'SH', 'th': 'TH', 'ph': 'F',
+    'ng': 'NG'
+}
+
+def grapheme_to_phoneme(text: str) -> str:
+    text = re.sub(r'[^a-z\s\-]', '', text.lower()).replace('-', ' ')
+    words_ph = []
+    for word in text.split():
+        phones_list = pronouncing.phones_for_word(word)
+        if phones_list:
+            words_ph.append(phones_list[0])
+            continue
+        
+        i = 0
+        n = len(word)
+        phones = []
+        while i < n:
+            if i < n - 1 and word[i:i+2] in GIBBERISH_VOWELS:
+                phones.append(GIBBERISH_VOWELS[word[i:i+2]] + '1')
+                i += 2
+            elif i < n - 1 and word[i:i+2] in GIBBERISH_CONSONANTS:
+                phones.append(GIBBERISH_CONSONANTS[word[i:i+2]])
+                i += 2
+            elif word[i] in GIBBERISH_VOWELS:
+                phones.append(GIBBERISH_VOWELS[word[i]] + '1')
+                i += 1
+            elif word[i] in GIBBERISH_CONSONANTS:
+                phones.append(GIBBERISH_CONSONANTS[word[i]])
+                i += 1
+            else:
+                i += 1
+        if phones:
+            words_ph.append(" ".join(phones))
+    return " ".join(words_ph) if words_ph else ""
+
+def parse_query_phonemes(query: str) -> str:
+    query = query.strip()
+    tokens = query.upper().split()
+    is_raw_cmu = True
+    for t in tokens:
+        t_clean = ''.join(c for c in t if not c.isdigit())
+        if t_clean not in CMU_PHONEMES:
+            is_raw_cmu = False
+            break
+    if is_raw_cmu:
+        return " ".join(tokens)
+    return grapheme_to_phoneme(query)
+
+def get_word_phonemes(word: str) -> str:
+    word_clean = word.lower().strip().strip("'")
+    if not word_clean:
+        return None
+    cursor = mem_conn.cursor()
+    cursor.execute("SELECT phonemes FROM words WHERE word = ?", (word_clean,))
+    row = cursor.fetchone()
+    if row:
+        return row[0]
+    phones_list = pronouncing.phones_for_word(word_clean)
+    if phones_list:
+        return phones_list[0]
+    return None
+
+def count_syllables(phones: str) -> int:
+    return sum(1 for p in phones.split() if p[-1].isdigit())
+
+def calculate_density(line: str):
+    raw_words = re.findall(r"[a-zA-Z']+", line.lower())
+    words_info = []
+    for rw in raw_words:
+        word = rw.strip("'")
+        if not word:
+            continue
+        phones = get_word_phonemes(word)
+        if phones:
+            syllables = count_syllables(phones)
+            rhyme_part = pronouncing.rhyming_part(phones)
+            words_info.append({
+                "word": word,
+                "syllables": max(1, syllables),
+                "rhyme_part": rhyme_part
+            })
+        else:
+            # Fallback syllable count (naive vowel groups)
+            vowels = "aeiouy"
+            count = 0
+            prev_is_vowel = False
+            for char in word:
+                is_vowel = char in vowels
+                if is_vowel and not prev_is_vowel:
+                    count += 1
+                prev_is_vowel = is_vowel
+            if word.endswith('e'):
+                count -= 1
+            syllables = max(1, count)
+            words_info.append({
+                "word": word,
+                "syllables": syllables,
+                "rhyme_part": None
+            })
+    if not words_info:
+        return 0.0, 0, 0
+    
+    total_syllables = sum(w["syllables"] for w in words_info)
+    if total_syllables == 0:
+        return 0.0, 0, 0
+
+    # Group by rhyme part (only if it has stress/digits 1 or 2)
+    rhyme_groups = {}
+    for w in words_info:
+        rp = w["rhyme_part"]
+        if rp and any(c.isdigit() and c != '0' for c in rp):
+            rhyme_groups.setdefault(rp, []).append(w)
+
+    # Mark words that rhyme
+    rhyming_words = set()
+    for rp, g in rhyme_groups.items():
+        if len(g) >= 2:
+            for w in g:
+                rhyming_words.add(id(w))
+
+    rhyming_syllables = sum(w["syllables"] for w in words_info if id(w) in rhyming_words)
+    density = rhyming_syllables / total_syllables
+    return density, rhyming_syllables, total_syllables
+
+@app.get("/rhyme-density")
+def get_rhyme_density(line: str = Query(..., description="Line to analyze")):
+    density, rhyming_syl, total_syl = calculate_density(line)
+    
+    # Target sweet spot: 0.22 - 0.44
+    is_sweet = 0.22 <= density <= 0.44
+    if density < 0.22:
+        status = "under-rhymed"
+    elif density > 0.44:
+        status = "over-rhymed"
+    else:
+        status = "within the sweet spot"
+        
+    return {
+        "line": line,
+        "density": round(density, 2),
+        "rhyming_syllables": rhyming_syl,
+        "total_syllables": total_syl,
+        "status": status,
+        "message": f"your line sits at {round(density, 2)} — {status} (0.22–0.44)"
+    }
+
+@app.get("/phonetic-swap")
+def get_phonetic_swap(word: str = Query(..., description="Gibberish or word to swap phonetically")):
+    query_phones_str = parse_query_phonemes(word)
+    if not query_phones_str:
+        return {"word": word, "phonemes": "", "results": []}
+        
+    query_phones = query_phones_str.split()
+    query_vowels = [clean_phoneme(p) for p in query_phones if clean_phoneme(p) in VOWELS]
+    query_syllables = len(query_vowels)
+    
+    scored_candidates = []
+    for profile in word_phoneme_profiles:
+        # Pre-filter: must be within ±1 syllable
+        if abs(profile["syllables"] - query_syllables) > 1:
+            continue
+            
+        dist = phoneme_distance(query_phones, profile["phonemes"])
+        
+        vowel_match_boost = 0.0
+        if profile["vowels"] == query_vowels:
+            vowel_match_boost = 1.5
+            
+        freq_factor = math.log10(profile["frequency"] + 1) * 0.2
+        final_score = dist - vowel_match_boost - freq_factor
+        
+        scored_candidates.append({
+            "word": profile["word"],
+            "distance": round(dist, 2),
+            "vowel_match": profile["vowels"] == query_vowels,
+            "frequency": profile["frequency"],
+            "score": final_score
+        })
+        
+    scored_candidates.sort(key=lambda x: x["score"])
+    results = [s["word"] for s in scored_candidates[:30]]
+    
+    return {
+        "word": word,
+        "phonemes": query_phones_str,
+        "results": results
+    }
+
+@app.get("/synonyms")
+def get_synonyms_alias(word: str = Query(..., description="Query word")):
+    # Redirect synonyms query to phonetic swap to fulfill the synonym finder replacement
+    return get_phonetic_swap(word)
 
 if __name__ == "__main__":
     import uvicorn

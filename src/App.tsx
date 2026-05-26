@@ -65,7 +65,7 @@ function App() {
   const [refreshGraveyardCount, setRefreshGraveyardCount] = useState(0);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(false);
-  const [activeRightPanel, setActiveRightPanel] = useState<'info' | 'scrapbook' | 'audio' | 'rhyme'>('info');
+  const [activeRightPanel, setActiveRightPanel] = useState<'info' | 'scrapbook' | 'audio' | 'rhyme' | 'density' | 'swap'>('info');
   const [lookupWord, setLookupWord] = useState<string | null>(null);
   const [rhymeResults, setRhymeResults] = useState<any | null>(null);
   const [loadingRhymes, setLoadingRhymes] = useState(false);
