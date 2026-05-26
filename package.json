@@ -9,7 +9,7 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "start": "concurrently --kill-others \"tsx server/index.ts\" \"python3 -m uvicorn rhyme_server:app --host 127.0.0.1 --port 8001\"",
+    "start": "concurrently --kill-others \"tsx server/index.ts\" \"export PYTHONPATH=\\$(python3 -m site --user-site) && export PATH=\\$PATH:\\$HOME/.local/bin:/opt/render/.local/bin && uvicorn rhyme_server:app --host 127.0.0.1 --port 8001\"",
     "postinstall": "pip3 install --break-system-packages -r requirements.txt || pip install -r requirements.txt || true"
   },
   "dependencies": {
