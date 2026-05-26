@@ -352,10 +352,6 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
 
   // Define light mode layout-matching styles
   const editorTheme = EditorView.theme({
-    "@keyframes cm-yBlink": {
-      "0%, 100%": { opacity: 1 },
-      "50%": { opacity: 0 }
-    },
     "&": {
       height: "100%",
       width: "100%",
@@ -398,62 +394,12 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
       flexShrink: 0,
       userSelect: "none",
     },
-
-    // Collaborative Cursors & Selections
+    "@keyframes cm-yBlink": {
+      "0%, 100%": {},
+      "50%": { borderLeftColor: "transparent !important" }
+    },
     ".cm-ySelectionCaret": {
-      position: "absolute",
-      width: "0px",
-      height: "1.25em",
-      border: "none",
-      userSelect: "none",
-      pointerEvents: "auto", /* Allow hover events to fire */
-    },
-    // Visual rounded cursor line that blinks
-    ".cm-ySelectionCaret::before": {
-      content: '""',
-      position: "absolute",
-      top: 0,
-      left: 0,
-      width: "2px",
-      height: "100%",
-      borderRadius: "1px",
-      backgroundColor: "inherit", /* Inherit dynamic color from parent background-color style */
-      animation: "cm-yBlink 1.2s steps(1) infinite",
-    },
-    // Make the hover target area slightly wider without affecting visuals
-    ".cm-ySelectionCaret::after": {
-      content: '""',
-      position: "absolute",
-      top: "-4px",
-      bottom: "-4px",
-      left: "-4px",
-      right: "-4px",
-    },
-    ".cm-ySelectionCaretDot": {
-      display: "none"
-    },
-    ".cm-ySelectionInfo": {
-      position: "absolute",
-      top: "-18px",
-      left: "-1px",
-      fontSize: "9px",
-      fontFamily: "var(--font-sans, system-ui, -apple-system, sans-serif)",
-      fontWeight: "600",
-      color: "white",
-      padding: "1px 5px",
-      borderRadius: "3px 3px 3px 0",
-      lineHeight: "normal",
-      whiteSpace: "nowrap",
-      userSelect: "none",
-      pointerEvents: "none",
-      zIndex: 100,
-      opacity: 0,
-      backgroundColor: "inherit", /* Inherit color from parent background-color style */
-      transition: "opacity 0.15s ease-in-out",
-      boxShadow: "0 1px 3px rgba(0, 0, 0, 0.15)",
-    },
-    ".cm-ySelectionCaret:hover .cm-ySelectionInfo": {
-      opacity: 1
+      animation: "cm-yBlink 1.2s steps(1) infinite"
     }
   });
 
