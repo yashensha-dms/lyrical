@@ -71,11 +71,6 @@ function App() {
   const [loadingRhymes, setLoadingRhymes] = useState(false);
   const [rhymeError, setRhymeError] = useState<string | null>(null);
 
-  // Synonyms state
-  const [synonymResults, setSynonymResults] = useState<string[] | null>(null);
-  const [loadingSynonyms, setLoadingSynonyms] = useState(false);
-  const [synonymError, setSynonymError] = useState<string | null>(null);
-
   const handleWordDoubleClicked = async (word: string) => {
     const word_clean = word.trim();
     if (!word_clean) return;
@@ -85,52 +80,27 @@ function App() {
     setRhymeError(null);
     setRhymeResults(null);
     
-    setLoadingSynonyms(true);
-    setSynonymError(null);
-    setSynonymResults(null);
-    
     setIsRightSidebarOpen(true);
     setActiveRightPanel('rhyme');
     
-    const fetchRhymes = async () => {
-      try {
-        const response = await fetch(`/api/rhyme?word=${encodeURIComponent(word_clean)}`);
-        if (!response.ok) {
-          throw new Error('Failed to fetch rhymes');
-        }
-        const data = await response.json();
-        setRhymeResults(data);
-      } catch (err: any) {
-        setRhymeError(err.message || 'Error fetching rhymes');
-      } finally {
-        setLoadingRhymes(false);
+    try {
+      const response = await fetch(`/api/rhyme?word=${encodeURIComponent(word_clean)}`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch rhymes');
       }
-    };
-
-    const fetchSynonyms = async () => {
-      try {
-        const response = await fetch(`/api/synonyms?word=${encodeURIComponent(word_clean)}`);
-        if (!response.ok) {
-          throw new Error('Failed to fetch synonyms');
-        }
-        const data = await response.json();
-        setSynonymResults(data.synonyms || []);
-      } catch (err: any) {
-        setSynonymError(err.message || 'Error fetching synonyms');
-      } finally {
-        setLoadingSynonyms(false);
-      }
-    };
-
-    await Promise.all([fetchRhymes(), fetchSynonyms()]);
+      const data = await response.json();
+      setRhymeResults(data);
+    } catch (err: any) {
+      setRhymeError(err.message || 'Error fetching rhymes');
+    } finally {
+      setLoadingRhymes(false);
+    }
   };
 
   const handleClearRhymes = () => {
     setLookupWord(null);
     setRhymeResults(null);
     setRhymeError(null);
-    setSynonymResults(null);
-    setSynonymError(null);
   };
 
   const editorRef = useRef<any>(null);
@@ -370,9 +340,6 @@ function App() {
                   rhymeResults={rhymeResults}
                   loadingRhymes={loadingRhymes}
                   rhymeError={rhymeError}
-                  synonymResults={synonymResults}
-                  loadingSynonyms={loadingSynonyms}
-                  synonymError={synonymError}
                   onClearRhymes={handleClearRhymes}
                   onSearchRhymes={handleWordDoubleClicked}
                 />

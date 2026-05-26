@@ -15,9 +15,6 @@ interface RightPanelProps {
   rhymeResults: any | null;
   loadingRhymes: boolean;
   rhymeError: string | null;
-  synonymResults: string[] | null;
-  loadingSynonyms: boolean;
-  synonymError: string | null;
   onClearRhymes: () => void;
   onSearchRhymes: (word: string) => void;
 }
@@ -31,9 +28,6 @@ export const RightPanel: React.FC<RightPanelProps> = ({
   rhymeResults,
   loadingRhymes,
   rhymeError,
-  synonymResults,
-  loadingSynonyms,
-  synonymError,
   onClearRhymes,
   onSearchRhymes,
 }) => {
@@ -84,9 +78,6 @@ export const RightPanel: React.FC<RightPanelProps> = ({
           data={rhymeResults}
           isLoading={loadingRhymes}
           error={rhymeError}
-          synonymResults={synonymResults}
-          loadingSynonyms={loadingSynonyms}
-          synonymError={synonymError}
           onClear={onClearRhymes}
           onSearch={onSearchRhymes}
         />

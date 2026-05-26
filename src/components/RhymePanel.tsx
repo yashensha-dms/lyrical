@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import * as Tabs from '@radix-ui/react-tabs';
 import { X, Search } from 'lucide-react';
 
 interface RhymeData {
@@ -15,9 +14,6 @@ interface RhymePanelProps {
   data: RhymeData | null;
   isLoading: boolean;
   error: string | null;
-  synonymResults: string[] | null;
-  loadingSynonyms: boolean;
-  synonymError: string | null;
   onClear: () => void;
   onSearch: (word: string) => void;
 }
@@ -27,9 +23,6 @@ export const RhymePanel: React.FC<RhymePanelProps> = ({
   data,
   isLoading,
   error,
-  synonymResults,
-  loadingSynonyms,
-  synonymError,
   onClear,
   onSearch,
 }) => {
@@ -117,176 +110,110 @@ export const RhymePanel: React.FC<RhymePanelProps> = ({
         </button>
       </form>
 
-      {/* Tabs */}
-      <Tabs.Root defaultValue="rhymes" className="flex-1 flex flex-col min-h-0">
-        <Tabs.List className="flex border-b border-paper-darker select-none bg-paper-dark/30 flex-shrink-0">
-          <Tabs.Trigger
-            value="rhymes"
-            className="flex-1 text-center py-2.5 text-xs font-semibold text-ink-muted hover:text-ink cursor-pointer border-b-2 border-transparent data-[state=active]:border-terracotta data-[state=active]:text-terracotta transition-all"
-          >
-            Rhymes
-          </Tabs.Trigger>
-          <Tabs.Trigger
-            value="synonyms"
-            className="flex-1 text-center py-2.5 text-xs font-semibold text-ink-muted hover:text-ink cursor-pointer border-b-2 border-transparent data-[state=active]:border-terracotta data-[state=active]:text-terracotta transition-all"
-          >
-            Synonyms
-          </Tabs.Trigger>
-        </Tabs.List>
+      {/* Rhyme Results Content */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-6">
+        {isLoading && (
+          <div className="text-xs text-ink-muted font-serif italic py-4 select-none">
+            finding rhymes...
+          </div>
+        )}
 
-        {/* Rhymes Content */}
-        <Tabs.Content
-          value="rhymes"
-          className="flex-1 overflow-y-auto p-4 space-y-6 focus:outline-none"
-        >
-          {isLoading && (
-            <div className="text-xs text-ink-muted font-serif italic py-4 select-none">
-              finding rhymes...
-            </div>
-          )}
+        {showEmptyState && (
+          <div className="text-xs text-ink-muted font-serif italic py-4 select-none">
+            no rhymes found
+          </div>
+        )}
 
-          {showEmptyState && (
-            <div className="text-xs text-ink-muted font-serif italic py-4 select-none">
-              no rhymes found
-            </div>
-          )}
+        {!lookupWord && !isLoading && !error && (
+          <div className="text-xs text-ink-muted font-serif italic py-4 select-none">
+            double click any word in the editor to load rhymes.
+          </div>
+        )}
 
-          {!lookupWord && !isLoading && !error && (
-            <div className="text-xs text-ink-muted font-serif italic py-4 select-none">
-              double click any word in the editor to load rhymes.
-            </div>
-          )}
-
-          {data && !isLoading && !error && hasResults && (
-            <>
-              {/* 1. Perfect Rhymes */}
-              {data.perfect.length > 0 && (
-                <div className="space-y-2">
-                  <span className="text-[10px] uppercase tracking-wider font-bold text-ink-light select-none block">
-                    Perfect Rhymes
-                  </span>
-                  <div className="flex flex-wrap gap-1.5">
-                    {data.perfect.map((word) => (
-                      <span
-                        key={word}
-                        onDoubleClick={() => onSearch(word)}
-                        className="px-2.5 py-1 text-xs bg-paper border border-paper-darker text-ink rounded-full font-serif select-all cursor-pointer hover:border-terracotta/40 hover:text-terracotta transition-all"
-                        title="Double click to search"
-                      >
-                        {word}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* 2. Perfect Phrases */}
-              {data.perfect_bigrams.length > 0 && (
-                <div className="space-y-2">
-                  <span className="text-[10px] uppercase tracking-wider font-bold text-ink-light select-none block">
-                    Perfect Phrases
-                  </span>
-                  <div className="flex flex-wrap gap-1.5">
-                    {data.perfect_bigrams.map((phrase) => (
-                      <span
-                        key={phrase}
-                        className="px-2.5 py-1 text-xs bg-paper border border-paper-darker text-ink rounded-full font-serif select-all"
-                      >
-                        {phrase}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* 3. Slant Rhymes */}
-              {data.slant.length > 0 && (
-                <div className="space-y-2">
-                  <span className="text-[10px] uppercase tracking-wider font-bold text-ink-light select-none block">
-                    Slant Rhymes
-                  </span>
-                  <div className="flex flex-wrap gap-1.5">
-                    {data.slant.map((word) => (
-                      <span
-                        key={word}
-                        onDoubleClick={() => onSearch(word)}
-                        className="px-2.5 py-1 text-xs bg-paper border border-paper-darker text-ink rounded-full font-serif select-all cursor-pointer hover:border-terracotta/40 hover:text-terracotta transition-all"
-                        title="Double click to search"
-                      >
-                        {word}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* 4. Slant Phrases */}
-              {data.slant_bigrams.length > 0 && (
-                <div className="space-y-2">
-                  <span className="text-[10px] uppercase tracking-wider font-bold text-ink-light select-none block">
-                    Slant Phrases
-                  </span>
-                  <div className="flex flex-wrap gap-1.5">
-                    {data.slant_bigrams.map((phrase) => (
-                      <span
-                        key={phrase}
-                        className="px-2.5 py-1 text-xs bg-paper border border-paper-darker text-ink rounded-full font-serif select-all"
-                      >
-                        {phrase}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </>
-          )}
-        </Tabs.Content>
-
-        {/* Synonyms Content */}
-        <Tabs.Content
-          value="synonyms"
-          className="flex-1 overflow-y-auto p-4 focus:outline-none"
-        >
-          {loadingSynonyms && (
-            <div className="text-xs text-ink-muted font-serif italic py-4 select-none">
-              finding synonyms...
-            </div>
-          )}
-
-          {!loadingSynonyms && synonymError && (
-            <div className="text-xs text-ink-muted font-serif italic py-4 select-none">
-              {synonymError}
-            </div>
-          )}
-
-          {!lookupWord && !loadingSynonyms && !synonymError && (
-            <div className="text-xs text-ink-muted font-serif italic py-4 select-none">
-              double click any word in the editor to load synonyms.
-            </div>
-          )}
-
-          {!loadingSynonyms && !synonymError && lookupWord && synonymResults && synonymResults.length === 0 && (
-            <div className="text-xs text-ink-muted font-serif italic py-4 select-none">
-              no synonyms found
-            </div>
-          )}
-
-          {synonymResults && !loadingSynonyms && !synonymError && synonymResults.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 pb-4">
-              {synonymResults.map((syn) => (
-                <span
-                  key={syn}
-                  onDoubleClick={() => onSearch(syn)}
-                  className="px-2.5 py-1 text-xs bg-paper border border-paper-darker text-ink rounded-full font-serif select-all cursor-pointer hover:border-terracotta/40 hover:text-terracotta transition-all"
-                  title="Double click to search"
-                >
-                  {syn}
+        {data && !isLoading && !error && hasResults && (
+          <>
+            {/* 1. Perfect Rhymes */}
+            {data.perfect.length > 0 && (
+              <div className="space-y-2">
+                <span className="text-[10px] uppercase tracking-wider font-bold text-ink-light select-none block">
+                  Perfect Rhymes
                 </span>
-              ))}
-            </div>
-          )}
-        </Tabs.Content>
-      </Tabs.Root>
+                <div className="flex flex-wrap gap-1.5">
+                  {data.perfect.map((word) => (
+                    <span
+                      key={word}
+                      onDoubleClick={() => onSearch(word)}
+                      className="px-2.5 py-1 text-xs bg-paper border border-paper-darker text-ink rounded-full font-serif select-all cursor-pointer hover:border-terracotta/40 hover:text-terracotta transition-all"
+                      title="Double click to search"
+                    >
+                      {word}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* 2. Perfect Phrases */}
+            {data.perfect_bigrams.length > 0 && (
+              <div className="space-y-2">
+                <span className="text-[10px] uppercase tracking-wider font-bold text-ink-light select-none block">
+                  Perfect Phrases
+                </span>
+                <div className="flex flex-wrap gap-1.5">
+                  {data.perfect_bigrams.map((phrase) => (
+                    <span
+                      key={phrase}
+                      className="px-2.5 py-1 text-xs bg-paper border border-paper-darker text-ink rounded-full font-serif select-all"
+                    >
+                      {phrase}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* 3. Slant Rhymes */}
+            {data.slant.length > 0 && (
+              <div className="space-y-2">
+                <span className="text-[10px] uppercase tracking-wider font-bold text-ink-light select-none block">
+                  Slant Rhymes
+                </span>
+                <div className="flex flex-wrap gap-1.5">
+                  {data.slant.map((word) => (
+                    <span
+                      key={word}
+                      onDoubleClick={() => onSearch(word)}
+                      className="px-2.5 py-1 text-xs bg-paper border border-paper-darker text-ink rounded-full font-serif select-all cursor-pointer hover:border-terracotta/40 hover:text-terracotta transition-all"
+                      title="Double click to search"
+                    >
+                      {word}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* 4. Slant Phrases */}
+            {data.slant_bigrams.length > 0 && (
+              <div className="space-y-2">
+                <span className="text-[10px] uppercase tracking-wider font-bold text-ink-light select-none block">
+                  Slant Phrases
+                </span>
+                <div className="flex flex-wrap gap-1.5">
+                  {data.slant_bigrams.map((phrase) => (
+                    <span
+                      key={phrase}
+                      className="px-2.5 py-1 text-xs bg-paper border border-paper-darker text-ink rounded-full font-serif select-all"
+                    >
+                      {phrase}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
     </div>
   );
 };

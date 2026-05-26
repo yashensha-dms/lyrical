@@ -1,18 +1,96 @@
 import sqlite3
-import Levenshtein
 from fastapi import FastAPI, Query
 from contextlib import asynccontextmanager
 import pronouncing
+from pydantic import BaseModel
+from typing import List
 
-# Global DB connection and cached unique endings, and Word2Vec model
+# Global DB connection and cached unique endings, and SentenceTransformer model
 mem_conn = None
 unique_word_endings = []
 unique_bigram_endings = []
-w2v_model = None
+sentence_model = None
+
+# ── Phonetic & Phoneme Distance Logic ─────────────────────────────────────────
+
+def clean_phoneme(p):
+    # Remove stress numbers from vowels (e.g., 'AH1' -> 'AH')
+    return ''.join(c for c in p if not c.isdigit())
+
+VOWELS = {
+    'AA', 'AE', 'AH', 'AO', 'AW', 'AY', 'EH', 'ER', 'EY', 'IH', 'IY', 'OW', 'OY', 'UH', 'UW', 'AX'
+}
+
+VOWEL_GROUPS = [
+    {'AH', 'AX', 'EH', 'IH', 'UH'},          # Short/central
+    {'AA', 'AO', 'ER', 'AE'},                # Open/back
+    {'EY', 'IY', 'AY'},                      # Long front / glide diphthongs
+    {'UW', 'OW', 'AW', 'OY'}                 # Long back / rounded
+]
+
+CONSONANT_GROUPS = [
+    {'M', 'N', 'NG'},                        # Nasals
+    {'S', 'Z', 'SH', 'ZH', 'F', 'V', 'TH', 'DH'}, # Fricatives / sibilants
+    {'P', 'B', 'T', 'D', 'K', 'G'},          # Plosives
+    {'L', 'R', 'W', 'Y', 'HH', 'CH', 'JH'}   # Glides / liquids / affricates
+]
+
+def get_phoneme_cost(p1, p2):
+    if p1 == p2:
+        return 0.0
+    
+    cp1 = clean_phoneme(p1)
+    cp2 = clean_phoneme(p2)
+    
+    if cp1 == cp2:
+        return 0.1 # Very minor difference (usually just stress difference)
+        
+    is_v1 = cp1 in VOWELS
+    is_v2 = cp2 in VOWELS
+    
+    if is_v1 != is_v2:
+        return 1.8 # Vowel vs Consonant: high cost
+        
+    if is_v1:
+        # Both are vowels
+        for group in VOWEL_GROUPS:
+            if cp1 in group and cp2 in group:
+                return 0.3 # Close vowel sound
+        return 0.8 # Different vowel group
+    else:
+        # Both are consonants
+        for group in CONSONANT_GROUPS:
+            if cp1 in group and cp2 in group:
+                return 0.4 # Similar consonant class
+        return 0.9 # Different consonant class
+
+def phoneme_distance(seq1, seq2):
+    m, n = len(seq1), len(seq2)
+    dp = [[0.0] * (n + 1) for _ in range(m + 1)]
+    
+    for i in range(m + 1):
+        dp[i][0] = i * 1.0
+    for j in range(n + 1):
+        dp[0][j] = j * 1.0
+        
+    for i in range(1, m + 1):
+        for j in range(1, n + 1):
+            p1 = seq1[i-1]
+            p2 = seq2[j-1]
+            cost = get_phoneme_cost(p1, p2)
+            
+            dp[i][j] = min(
+                dp[i-1][j] + 1.0,      # Deletion
+                dp[i][j-1] + 1.0,      # Insertion
+                dp[i-1][j-1] + cost    # Substitution
+            )
+            
+    return dp[m][n]
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global mem_conn, unique_word_endings, unique_bigram_endings, w2v_model
+    global mem_conn, unique_word_endings, unique_bigram_endings, sentence_model
     print("Loading rhyme_data.db into memory...")
     disk_conn = sqlite3.connect("rhyme_data.db")
     mem_conn = sqlite3.connect(":memory:", check_same_thread=False)
@@ -27,15 +105,15 @@ async def lifespan(app: FastAPI):
     cursor.execute("SELECT DISTINCT rhyme_ending FROM bigrams")
     unique_bigram_endings = [r[0] for r in cursor.fetchall() if r[0]]
     
-    # Load Word2Vec model
+    # Load SentenceTransformer model
     try:
-        from gensim.models import Word2Vec
-        print("Loading Word2Vec model...")
-        w2v_model = Word2Vec.load("songwriting_word2vec.model")
-        print("Word2Vec model loaded.")
+        from sentence_transformers import SentenceTransformer
+        print("Loading SentenceTransformer model...")
+        sentence_model = SentenceTransformer("all-MiniLM-L6-v2")
+        print("SentenceTransformer model loaded.")
     except Exception as e:
-        print(f"Error loading Word2Vec model: {e}")
-        w2v_model = None
+        print(f"Error loading SentenceTransformer model: {e}")
+        sentence_model = None
         
     print("Rhyme service startup complete.")
     yield
@@ -103,7 +181,10 @@ def get_rhyme(word: str = Query(..., description="Query word to find rhymes for"
         "go", "make", "take", "would", "could", "should"
     }
     
-    slant_w_endings = [e for e in unique_word_endings if Levenshtein.distance(rhyme_ending, e) in (1, 2)]
+    # Calculate slant word endings using phonetic token edit distance
+    source_tokens = rhyme_ending.split()
+    slant_w_endings = [e for e in unique_word_endings if phoneme_distance(source_tokens, e.split()) < 1.3]
+    
     if not slant_w_endings:
         slant_words = []
     else:
@@ -118,13 +199,20 @@ def get_rhyme(word: str = Query(..., description="Query word to find rhymes for"
         
     # 4. Perfect bigram rhymes
     cursor.execute(
-        "SELECT bigram FROM bigrams WHERE rhyme_ending = ? ORDER BY frequency DESC LIMIT 30",
+        "SELECT bigram FROM bigrams WHERE rhyme_ending = ? ORDER BY frequency DESC LIMIT 150",
         (rhyme_ending,)
     )
-    perfect_bigrams = [r[0] for r in cursor.fetchall()]
+    raw_perfect_bigrams = [r[0] for r in cursor.fetchall()]
+    perfect_bigrams = []
+    for bg in raw_perfect_bigrams:
+        parts = bg.split()
+        if word_clean not in parts:
+            perfect_bigrams.append(bg)
+        if len(perfect_bigrams) >= 30:
+            break
     
     # 5. Slant bigram rhymes
-    slant_b_endings = [e for e in unique_bigram_endings if Levenshtein.distance(rhyme_ending, e) in (1, 2)]
+    slant_b_endings = [e for e in unique_bigram_endings if phoneme_distance(source_tokens, e.split()) < 1.3]
     if not slant_b_endings:
         slant_bigrams = []
     else:
@@ -138,6 +226,8 @@ def get_rhyme(word: str = Query(..., description="Query word to find rhymes for"
         for bg in raw_slant_bigrams:
             parts = bg.split()
             if len(parts) == 2:
+                if word_clean in parts:
+                    continue
                 if len(parts[0]) >= 3 and parts[0] not in STOPWORDS and len(parts[1]) >= 3 and parts[1] not in STOPWORDS:
                     slant_bigrams.append(bg)
             if len(slant_bigrams) >= 30:
@@ -151,63 +241,31 @@ def get_rhyme(word: str = Query(..., description="Query word to find rhymes for"
         "slant_bigrams": slant_bigrams
     }
 
-@app.get("/synonyms")
-def get_synonyms(word: str = Query(..., description="Query word to find synonyms for")):
-    word_clean = word.lower().strip()
-    
-    if not w2v_model:
-        return {"word": word, "synonyms": []}
+# ── Semantic Search / Sentence Similarity Endpoint ────────────────────────────
+
+class SemanticSearchRequest(BaseModel):
+    query: str
+    documents: List[str]
+
+@app.post("/semantic-search")
+def semantic_search(req: SemanticSearchRequest):
+    if not sentence_model or not req.documents:
+        return {"query": req.query, "results": []}
         
-    if word_clean not in w2v_model.wv:
-        return {"word": word, "synonyms": []}
-        
-    # Get top 500 semantically similar words from Word2Vec
-    sim_results = w2v_model.wv.most_similar(word_clean, topn=500)
+    query_emb = sentence_model.encode(req.query, convert_to_tensor=True)
+    doc_embs = sentence_model.encode(req.documents, convert_to_tensor=True)
     
-    # Get phonemes for the target query word
-    target_phones_list = pronouncing.phones_for_word(word_clean)
-    target_phonemes = target_phones_list[0].split() if target_phones_list else []
-    target_ending = pronouncing.rhyming_part(target_phones_list[0]) if target_phones_list else None
+    # Compute cosine similarities using sentence-transformers util
+    from sentence_transformers import util
+    cos_scores = util.cos_sim(query_emb, doc_embs)[0]
     
-    scored_results = []
-    
-    for cand, sim_score in sim_results:
-        cand_clean = cand.lower().strip()
+    # Prepare results sorted by score descending
+    scored = []
+    for doc, score in zip(req.documents, cos_scores.tolist()):
+        scored.append({"document": doc, "score": score})
         
-        # Determine phonetic similarity
-        cand_phones_list = pronouncing.phones_for_word(cand_clean)
-        cand_phonemes = cand_phones_list[0].split() if cand_phones_list else []
-        cand_ending = pronouncing.rhyming_part(cand_phones_list[0]) if cand_phones_list else None
-        
-        overlap_score = 0.0
-        if target_phonemes and cand_phonemes:
-            # Fraction of overlapping phonemes
-            intersection = set(target_phonemes) & set(cand_phonemes)
-            overlap_score = len(intersection) / max(len(target_phonemes), len(cand_phonemes))
-            
-            # Additional boost for matching rhyme parts (sounding highly connected)
-            if target_ending and cand_ending and target_ending == cand_ending:
-                overlap_score += 0.5
-                
-        # Multiplicative boost: score = sim_score * (1 + overlap_score * 0.4)
-        final_score = sim_score * (1.0 + overlap_score * 0.4)
-        scored_results.append((cand, final_score))
-        
-    # Sort descending by final score
-    scored_results.sort(key=lambda x: x[1], reverse=True)
-    
-    # Extract candidate strings
-    synonyms = [r[0] for r in scored_results]
-    
-    # Specifically: "broken" returns "lost", "gone", "falling" — NOT "fractured", "shattered", "damaged"
-    if word_clean == "broken":
-        literal_filter = {"fractured", "shattered", "damaged", "splintered", "ruptured", "smashed", "cracked", "broken-down"}
-        synonyms = [w for w in synonyms if w not in literal_filter]
-        
-    return {
-        "word": word,
-        "synonyms": synonyms
-    }
+    scored.sort(key=lambda x: x["score"], reverse=True)
+    return {"query": req.query, "results": scored}
 
 if __name__ == "__main__":
     import uvicorn
