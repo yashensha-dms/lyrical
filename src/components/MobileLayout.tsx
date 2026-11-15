@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { PenLine, Library, AlertCircle, Info } from 'lucide-react';
+import { PenLine, Library, Info } from 'lucide-react';
 import { Sidebar } from './Sidebar';
 import { Notepad } from './Notepad';
 import { ProjectInfoPanel } from './ProjectInfoPanel';
@@ -32,7 +32,7 @@ interface MobileLayoutProps {
 
 export const MobileLayout: React.FC<MobileLayoutProps> = ({
   activeDraft,
-  healthStatus,
+  healthStatus: _healthStatus,
   isCloudMode,
   yDoc,
   provider,
@@ -93,15 +93,6 @@ export const MobileLayout: React.FC<MobileLayoutProps> = ({
         )}
       </header>
 
-      {/* ── Offline Warning Banner ── */}
-      {healthStatus === 'disconnected' && (
-        <div className="bg-[#FEF3C7] text-ink border-b border-[#FDE68A] px-4 py-2 flex items-center justify-between text-xs font-medium flex-shrink-0">
-          <div className="flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 text-[#D97706] flex-shrink-0" />
-            <span>Cloud offline. Changes will merge when online.</span>
-          </div>
-        </div>
-      )}
 
       {/* ── Main Panel Area ── */}
       <main className="flex-1 min-h-0 w-full overflow-hidden relative">

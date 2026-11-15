@@ -9,9 +9,9 @@
     "dev:recommender": "wrangler dev --config workers/recommender/wrangler.json",
     "build": "tsc -b && vite build",
     "build:pages": "tsc -b && vite build",
-    "deploy:pages": "wrangler pages deploy dist --project-name=songwriting --force",
-    "deploy:api": "wrangler deploy --config workers/api/wrangler.json",
-    "deploy:recommender": "wrangler deploy --config workers/recommender/wrangler.json",
+    "deploy:pages": "npx wrangler pages deploy dist --project-name=songwriting --force",
+    "deploy:api": "npx wrangler deploy --config workers/api/wrangler.json",
+    "deploy:recommender": "npx wrangler deploy --config workers/recommender/wrangler.json",
     "deploy:all": "npm run build && npm run deploy:recommender && npm run deploy:api && npm run deploy:pages",
     "lint": "eslint .",
     "preview": "vite preview"

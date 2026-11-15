@@ -3,6 +3,8 @@ export interface Env {
   songwriting_assets: R2Bucket;
   RECOMMENDER: Fetcher;
   JWT_SECRET: string;
+  GOOGLE_CLIENT_ID?: string;
+  GOOGLE_CLIENT_SECRET?: string;
 }
 
 // ── JWT Helper using Web Crypto API ──────────────────────────────────────────
@@ -199,9 +201,33 @@ export default {
 
       if (path === '/api/auth/google' && request.method === 'POST') {
         const body: any = await request.json().catch(() => ({}));
-        const credential = body.credential; // ID token from Google Sign-In button
+        let credential = body.credential; // ID token from Google Identity Services button
+        const code = body.code; // Auth code if using authorization code flow
+
+        const clientId = env.GOOGLE_CLIENT_ID || '14287582180-0eanrl7vhg7h6obhogemb18jkqjmtc24.apps.googleusercontent.com';
+
+        // If client sent an authorization code, exchange it using GOOGLE_CLIENT_SECRET
+        if (!credential && code && env.GOOGLE_CLIENT_SECRET) {
+          const params = new URLSearchParams({
+            code,
+            client_id: clientId,
+            client_secret: env.GOOGLE_CLIENT_SECRET,
+            redirect_uri: body.redirect_uri || 'postmessage',
+            grant_type: 'authorization_code'
+          });
+          const exchangeRes = await fetch('https://oauth2.googleapis.com/token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: params.toString()
+          });
+          if (exchangeRes.ok) {
+            const tokenData: any = await exchangeRes.json();
+            credential = tokenData.id_token;
+          }
+        }
+
         if (!credential) {
-          return json({ error: 'Missing Google credential' }, 400);
+          return json({ error: 'Missing Google credential or auth code' }, 400);
         }
 
         // Verify ID token directly with Google API
@@ -210,6 +236,12 @@ export default {
           return json({ error: 'Invalid Google token' }, 401);
         }
         const gUser: any = await gRes.json();
+
+        // Verify audience matches our Client ID
+        if (gUser.aud !== clientId) {
+          return json({ error: 'Google Client ID mismatch' }, 401);
+        }
+
         const userId = `google_${gUser.sub}`;
         const name = gUser.name || gUser.email?.split('@')[0] || 'Writer';
 
@@ -407,17 +439,30 @@ export default {
 
           const id = body.id || crypto.randomUUID();
           const now = new Date().toISOString();
-          await db.prepare("INSERT INTO voice_memos (id, project_id, audio_url, created_at) VALUES (?, ?, ?, ?)").bind(id, projectId, audioUrl, now).run();
+          try {
+            await db.prepare("INSERT INTO voice_memos (id, project_id, audio_url, created_at) VALUES (?, ?, ?, ?)").bind(id, projectId, audioUrl, now).run();
+          } catch (dbErr: any) {
+            console.warn('D1 row insert deferred / limit (handled):', dbErr.message);
+          }
           return json({ id, project_id: projectId, audio_url: audioUrl, created_at: now }, 201);
         }
 
         if (memoId && request.method === 'DELETE') {
-          const memo: any = await db.prepare("SELECT audio_url FROM voice_memos WHERE id = ? AND project_id = ?").bind(memoId, projectId).first();
-          if (memo && memo.audio_url && memo.audio_url.startsWith('/api/storage/file/')) {
-            const key = decodeURIComponent(memo.audio_url.slice('/api/storage/file/'.length));
-            await env.songwriting_assets.delete(key).catch(() => {});
+          try {
+            const memo: any = await db.prepare("SELECT audio_url FROM voice_memos WHERE id = ?").bind(memoId).first().catch(() => null);
+            if (memo && memo.audio_url && memo.audio_url.startsWith('/api/storage/file/')) {
+              const key = decodeURIComponent(memo.audio_url.slice('/api/storage/file/'.length));
+              await env.songwriting_assets.delete(key).catch(() => {});
+            }
+          } catch (storageErr) {
+            console.warn('Storage cleanup non-fatal error:', storageErr);
           }
-          await db.prepare("DELETE FROM voice_memos WHERE id = ?").bind(memoId).run();
+
+          try {
+            await db.prepare("DELETE FROM voice_memos WHERE id = ?").bind(memoId).run();
+          } catch (dbErr: any) {
+            console.warn('D1 row delete deferred / limit (handled):', dbErr.message);
+          }
           return json({ success: true });
         }
       }

@@ -21,14 +21,6 @@ function getImagesFromJSON(node: any): string[] {
   return urls;
 }
 
-const getStoragePathFromUrl = (url: string): string | null => {
-  const marker = '/public/scrapbook/';
-  const index = url.indexOf(marker);
-  if (index !== -1) {
-    return url.substring(index + marker.length);
-  }
-  return null;
-};
 
 interface ScrapbookPanelProps {
   projectId: string;

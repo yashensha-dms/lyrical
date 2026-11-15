@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
-import { Brain, Timer, ChevronDown, X, Share2, Check } from 'lucide-react';
+import { Brain, Timer, ChevronDown, X, Share2, Check, Languages } from 'lucide-react';
 import type { Draft } from '../hooks/useDrafts';
 import { HighlightingTextarea } from './HighlightingTextarea';
 import * as Y from 'yjs';
@@ -26,6 +26,8 @@ interface NotepadProps {
   editorRef?: React.RefObject<any>;
   onMoveToGraveyard?: () => void;
   onWordDoubleClicked?: (word: string) => void;
+  manglishActive?: boolean;
+  onToggleManglish?: () => void;
 }
 
 export const Notepad: React.FC<NotepadProps> = ({
@@ -44,6 +46,8 @@ export const Notepad: React.FC<NotepadProps> = ({
   editorRef,
   onMoveToGraveyard,
   onWordDoubleClicked,
+  manglishActive: propManglishActive,
+  onToggleManglish: propOnToggleManglish,
 }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -75,6 +79,29 @@ export const Notepad: React.FC<NotepadProps> = ({
   ];
 
   const [copied, setCopied] = useState(false);
+  const [internalManglishActive, setInternalManglishActive] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('lyrical_manglish_active') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const manglishActive = propManglishActive !== undefined ? propManglishActive : internalManglishActive;
+
+  const handleToggleManglish = useCallback(() => {
+    if (propOnToggleManglish) {
+      propOnToggleManglish();
+      return;
+    }
+    setInternalManglishActive(prev => {
+      const next = !prev;
+      try {
+        localStorage.setItem('lyrical_manglish_active', String(next));
+      } catch {}
+      return next;
+    });
+  }, [propOnToggleManglish]);
 
   // Play synthetic terracotta chime sound using Web Audio API
   const playChime = useCallback(() => {
@@ -308,6 +335,23 @@ export const Notepad: React.FC<NotepadProps> = ({
             </button>
           )}
 
+          {/* Malayalam / Manglish Transliteration Toggle */}
+          <button
+            onClick={handleToggleManglish}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold border transition cursor-pointer select-none ${
+              manglishActive
+                ? 'bg-terracotta border-terracotta text-white shadow-xs'
+                : 'border-paper-darker text-ink-muted hover:border-terracotta/40 hover:text-terracotta bg-paper-dark'
+            }`}
+            title="Toggle Manglish to Malayalam transliteration (Ctrl+M / Cmd+M)"
+          >
+            <Languages className="w-3.5 h-3.5" />
+            <span>മലയാളം</span>
+            <span className={`text-[9px] px-1 py-0.2 rounded font-mono ${manglishActive ? 'bg-black/20 text-white font-bold' : 'bg-paper-darker text-ink-muted'}`}>
+              {manglishActive ? 'ON' : 'OFF'}
+            </span>
+          </button>
+
           {subconsciousActive ? (
             <div className="flex items-center gap-3 bg-terracotta/10 border border-terracotta/20 rounded-md px-3 py-1 text-xs">
               <span className="flex items-center gap-1.5 text-terracotta font-medium font-mono">
@@ -394,6 +438,8 @@ export const Notepad: React.FC<NotepadProps> = ({
             onSelect={handleSelect}
             placeholder={subconsciousActive ? "Keep typing, don't stop, don't look back..." : "Write your lyrics here..."}
             subconsciousActive={subconsciousActive}
+            manglishActive={manglishActive}
+            onToggleManglish={handleToggleManglish}
             isMobile={isMobile}
             targetTemplate={targetTemplate}
             syllableTolerance={syllableTolerance}

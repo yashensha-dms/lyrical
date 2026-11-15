@@ -1,0 +1,4 @@
+# Local Cloudflare Worker Secrets & Variables for workers/api
+JWT_SECRET=lyrical_super_secret_jwt_hmac_key_2026_cf_native
+GOOGLE_CLIENT_ID=14287582180-0eanrl7vhg7h6obhogemb18jkqjmtc24.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=your_google_client_secret_here

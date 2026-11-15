@@ -6,19 +6,22 @@ import { VoiceMemosPanel } from './VoiceMemosPanel';
 import { RhymePanel } from './RhymePanel';
 import { RhymeDensityPanel } from './RhymeDensityPanel';
 import { PhoneticSwapPanel } from './PhoneticSwapPanel';
+import { MalayalamWordFinderPanel } from './MalayalamWordFinderPanel';
 import type { Draft } from '../hooks/useDrafts';
 
 interface RightPanelProps {
   activeDraft: Draft;
   updateActiveDraft: (updates: Partial<Omit<Draft, 'id' | 'createdAt'>>) => void;
   setIsSidebarOpen: (open: boolean) => void;
-  activePanel: 'info' | 'scrapbook' | 'audio' | 'rhyme' | 'density' | 'swap';
+  activePanel: 'info' | 'scrapbook' | 'audio' | 'rhyme' | 'density' | 'swap' | 'malayalam';
   lookupWord: string | null;
   rhymeResults: any | null;
   loadingRhymes: boolean;
   rhymeError: string | null;
   onClearRhymes: () => void;
   onSearchRhymes: (word: string) => void;
+  onSelectMalayalamWord?: (word: string) => void;
+  isMalayalamMode?: boolean;
 }
 
 export const RightPanel: React.FC<RightPanelProps> = ({
@@ -32,8 +35,12 @@ export const RightPanel: React.FC<RightPanelProps> = ({
   rhymeError,
   onClearRhymes,
   onSearchRhymes,
+  isMalayalamMode = false,
 }) => {
   const getHeaderLabel = () => {
+    if (isMalayalamMode && (activePanel === 'rhyme' || activePanel === 'density' || activePanel === 'swap' || activePanel === 'malayalam')) {
+      return 'മലയാളം നിഘണ്ടു & മീറ്റർ';
+    }
     switch (activePanel) {
       case 'info':
         return 'Project Info';
@@ -47,6 +54,8 @@ export const RightPanel: React.FC<RightPanelProps> = ({
         return 'Rhyme Density';
       case 'swap':
         return 'Word Swap';
+      case 'malayalam':
+        return 'മലയാളം നിഘണ്ടു & മീറ്റർ';
       default:
         return '';
     }
@@ -78,6 +87,12 @@ export const RightPanel: React.FC<RightPanelProps> = ({
         <ScrapbookPanel projectId={activeDraft.id} />
       ) : activePanel === 'audio' ? (
         <VoiceMemosPanel projectId={activeDraft.id} />
+      ) : isMalayalamMode ? (
+        <MalayalamWordFinderPanel
+          lookupWord={lookupWord}
+          onSelectWord={onSearchRhymes}
+          onClearLookup={onClearRhymes}
+        />
       ) : activePanel === 'rhyme' ? (
         <RhymePanel
           lookupWord={lookupWord}
@@ -89,8 +104,14 @@ export const RightPanel: React.FC<RightPanelProps> = ({
         />
       ) : activePanel === 'density' ? (
         <RhymeDensityPanel />
-      ) : (
+      ) : activePanel === 'swap' ? (
         <PhoneticSwapPanel />
+      ) : (
+        <MalayalamWordFinderPanel
+          lookupWord={lookupWord}
+          onSelectWord={onSearchRhymes}
+          onClearLookup={onClearRhymes}
+        />
       )}
     </div>
   );

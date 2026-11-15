@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
-import { AlertCircle, Music } from 'lucide-react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { Music } from 'lucide-react';
 import { ActivityBar } from './components/ActivityBar';
 import { Sidebar } from './components/Sidebar';
 import { Notepad } from './components/Notepad';
@@ -13,6 +13,7 @@ import { api } from './utils/apiClient';
 import { Login } from './components/Login';
 import { RightPanel } from './components/RightPanel';
 import { RightActivityBar } from './components/RightActivityBar';
+import { isMalayalam } from './utils/malayalamProsody';
 
 function App() {
   const [session, setSession] = useState<any>(null);
@@ -29,7 +30,9 @@ function App() {
       setLoadingAuth(false);
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
   const {
@@ -65,22 +68,57 @@ function App() {
   const [refreshGraveyardCount, setRefreshGraveyardCount] = useState(0);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(false);
-  const [activeRightPanel, setActiveRightPanel] = useState<'info' | 'scrapbook' | 'audio' | 'rhyme' | 'density' | 'swap'>('info');
+  const [activeRightPanel, setActiveRightPanel] = useState<'info' | 'scrapbook' | 'audio' | 'rhyme' | 'density' | 'swap' | 'malayalam'>('info');
   const [lookupWord, setLookupWord] = useState<string | null>(null);
   const [rhymeResults, setRhymeResults] = useState<any | null>(null);
   const [loadingRhymes, setLoadingRhymes] = useState(false);
   const [rhymeError, setRhymeError] = useState<string | null>(null);
+
+  // Malayalam Mode state
+  const [manglishActive, setManglishActive] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('lyrical_manglish_active') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const handleToggleManglish = useCallback(() => {
+    setManglishActive(prev => {
+      const next = !prev;
+      try {
+        localStorage.setItem('lyrical_manglish_active', String(next));
+      } catch {}
+      return next;
+    });
+  }, []);
+
+  const isMalayalamMode = useMemo(() => {
+    return manglishActive || isMalayalam(activeDraft?.content || '') || isMalayalam(activeDraft?.title || '');
+  }, [manglishActive, activeDraft?.content, activeDraft?.title]);
+
+  // When in Malayalam mode, automatically switch away from English-only panels
+  useEffect(() => {
+    if (isMalayalamMode && (activeRightPanel === 'rhyme' || activeRightPanel === 'density' || activeRightPanel === 'swap')) {
+      setActiveRightPanel('malayalam');
+    }
+  }, [isMalayalamMode, activeRightPanel]);
 
   const handleWordDoubleClicked = async (word: string) => {
     const word_clean = word.trim();
     if (!word_clean) return;
     
     setLookupWord(word_clean);
+    setIsRightSidebarOpen(true);
+
+    if (isMalayalam(word_clean) || isMalayalamMode) {
+      setActiveRightPanel('malayalam');
+      return;
+    }
+
     setLoadingRhymes(true);
     setRhymeError(null);
     setRhymeResults(null);
-    
-    setIsRightSidebarOpen(true);
     setActiveRightPanel('rhyme');
     
     try {
@@ -114,6 +152,8 @@ function App() {
   // Subconscious writing mode
   const [subconsciousActive, setSubconsciousActive] = useState(false);
 
+  const triedLoadingRef = useRef<string | null>(null);
+
   // ── URL ↔ Draft sync ──────────────────────────────────────────────────────
   // Bidirectional sync between URL and activeDraftId
   useEffect(() => {
@@ -122,11 +162,14 @@ function App() {
         const found = drafts.find(d => d.id === urlDraftId);
         if (found) {
           selectDraft(urlDraftId);
-        } else if (drafts.length > 0) {
+          triedLoadingRef.current = null;
+        } else if (drafts.length > 0 && triedLoadingRef.current !== urlDraftId) {
+          triedLoadingRef.current = urlDraftId;
           loadDrafts(urlDraftId);
         }
       }
     } else {
+      triedLoadingRef.current = null;
       if (activeDraft?.id !== null && activeDraft?.id !== undefined) {
         selectDraft(null);
       }
@@ -142,6 +185,7 @@ function App() {
   // Handle create draft: create AND navigate to the new URL
   const handleCreateDraft = async (title?: string) => {
     const newDraft = await createDraft(title);
+    selectDraft(newDraft.id);
     navigate(`/draft/${newDraft.id}`);
     return newDraft;
   };
@@ -167,7 +211,7 @@ function App() {
   }
 
   if (!session) {
-    return <Login />;
+    return <Login onLoginSuccess={(s) => setSession(s)} />;
   }
 
   // Show landing if no active draft
@@ -260,15 +304,6 @@ function App() {
 
       </header>
 
-      {/* Offline Warning Banner */}
-      {healthStatus === 'disconnected' && (
-        <div className="bg-amber-light text-ink border-b border-[#F5DDA8] px-4 py-2 flex items-center justify-between text-xs font-medium flex-shrink-0 select-none">
-          <div className="flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 text-amber-DEFAULT" />
-            <span>You are offline. Changes will automatically merge when database connection is restored.</span>
-          </div>
-        </div>
-      )}
 
       {/* Main Workspace Area */}
       <main className="flex-1 flex min-h-0 w-full relative">
@@ -326,6 +361,8 @@ function App() {
               editorRef={editorRef}
               onMoveToGraveyard={() => setRefreshGraveyardCount(prev => prev + 1)}
               onWordDoubleClicked={handleWordDoubleClicked}
+              manglishActive={manglishActive}
+              onToggleManglish={handleToggleManglish}
             />
             {isRightSidebarOpen && (
               <div className={`transition-all duration-500 h-full flex flex-shrink-0 ${
@@ -342,6 +379,7 @@ function App() {
                   rhymeError={rhymeError}
                   onClearRhymes={handleClearRhymes}
                   onSearchRhymes={handleWordDoubleClicked}
+                  isMalayalamMode={isMalayalamMode}
                 />
               </div>
             )}
@@ -353,6 +391,7 @@ function App() {
                 setIsSidebarOpen={setIsRightSidebarOpen}
                 activePanel={activeRightPanel}
                 setActivePanel={setActiveRightPanel}
+                isMalayalamMode={isMalayalamMode}
               />
             </div>
           </>

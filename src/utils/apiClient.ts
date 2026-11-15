@@ -93,17 +93,32 @@ export const api = {
     },
     signInWithGuest: async (name?: string, pen_name?: string): Promise<Session> => {
       const savedUser = getStoredUser();
-      const payload: any = {};
-      if (name) payload.name = name;
-      if (pen_name) payload.pen_name = pen_name;
-      if (savedUser?.id) payload.id = savedUser.id;
+      const finalName = name || savedUser?.name || 'Writer';
+      const finalPenName = pen_name || savedUser?.pen_name || finalName;
+      const guestId = savedUser?.id || `guest_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 
-      const data = await request<{ token: string; user: User }>('/api/auth/guest', {
-        method: 'POST',
-        body: JSON.stringify(payload)
-      });
-      setStoredSession(data.token, data.user);
-      return { access_token: data.token, user: data.user };
+      const guestUser: User = {
+        id: guestId,
+        name: finalName,
+        pen_name: finalPenName,
+      };
+      const guestToken = `local_guest_${guestId}`;
+
+      try {
+        const payload: any = { name: finalName, pen_name: finalPenName };
+        if (savedUser?.id) payload.id = savedUser.id;
+
+        const data = await request<{ token: string; user: User }>('/api/auth/guest', {
+          method: 'POST',
+          body: JSON.stringify(payload)
+        });
+        setStoredSession(data.token, data.user);
+        return { access_token: data.token, user: data.user };
+      } catch (err) {
+        console.warn('Backend unavailable, proceeding with offline local guest session:', err);
+        setStoredSession(guestToken, guestUser);
+        return { access_token: guestToken, user: guestUser };
+      }
     },
     signInWithGoogleCredential: async (credential: string): Promise<Session> => {
       const data = await request<{ token: string; user: User }>('/api/auth/google', {

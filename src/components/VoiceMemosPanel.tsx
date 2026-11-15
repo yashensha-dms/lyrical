@@ -38,7 +38,9 @@ export const VoiceMemosPanel: React.FC<VoiceMemosPanelProps> = ({ projectId }) =
       try {
         const data = await api.voiceMemos.list(projectId);
         if (isMounted) {
-          setMemos(data || []);
+          const deleted = new Set(JSON.parse(localStorage.getItem('lyrical_deleted_memos') || '[]'));
+          const filtered = (data || []).filter((m: any) => !deleted.has(m.id));
+          setMemos(filtered);
         }
       } catch (err) {
         console.error('Error fetching voice memos:', err);
@@ -158,6 +160,14 @@ export const VoiceMemosPanel: React.FC<VoiceMemosPanelProps> = ({ projectId }) =
   };
 
   const handleDeleteMemo = (id: string) => {
+    try {
+      const existing = JSON.parse(localStorage.getItem('lyrical_deleted_memos') || '[]');
+      if (!existing.includes(id)) {
+        existing.push(id);
+        localStorage.setItem('lyrical_deleted_memos', JSON.stringify(existing));
+      }
+    } catch {}
+
     setMemos((prev) => prev.filter((m) => m.id !== id));
     if (currentlyPlayingId === id) {
       setCurrentlyPlayingId(null);

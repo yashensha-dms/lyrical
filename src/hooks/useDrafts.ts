@@ -143,10 +143,6 @@ export function useDrafts(session: any) {
     setProvider(providerInstance);
     wsRoomRef.current = draftId;
 
-    providerInstance.on('status', (event: any) => {
-      setHealthStatus(event.status === 'connected' ? 'connected' : 'disconnected');
-    });
-
     const titleText = ydoc.getText('title');
     const contentText = ydoc.getText('content');
     const templateText = ydoc.getText('targetTemplate');
@@ -202,12 +198,14 @@ export function useDrafts(session: any) {
 
   // Connect/disconnect WS when local mode setting or active draft changes
   useEffect(() => {
-    if (isCloudMode && activeDraftId) {
+    const isGuest = session?.user?.id?.startsWith('guest_') || session?.access_token?.startsWith('local_guest_');
+    const isWsEnabled = isCloudMode && healthStatus === 'connected' && !isGuest;
+    if (isWsEnabled && activeDraftId) {
       connectWs(activeDraftId);
     } else {
       disconnectWs();
     }
-  }, [isCloudMode, activeDraftId, connectWs, disconnectWs]);
+  }, [isCloudMode, healthStatus, session, activeDraftId, connectWs, disconnectWs]);
 
   // Update Yjs awareness if penName changes while connected
   useEffect(() => {
@@ -311,6 +309,36 @@ export function useDrafts(session: any) {
       } catch (e) {
         console.error('Failed to load projects:', e);
       }
+    }
+
+    // Local drafts fallback if cloud is offline or empty
+    if (loaded.length === 0) {
+      try {
+        const localRaw = localStorage.getItem('lyrical_local_drafts');
+        if (localRaw) {
+          loaded = JSON.parse(localRaw);
+        }
+      } catch {}
+    }
+
+    if (loaded.length === 0) {
+      const defaultSong: Draft = {
+        id: `draft_${Date.now()}`,
+        title: 'Untitled Malayalam Song',
+        content: '',
+        targetTemplate: '',
+        syllableTolerance: 1,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        status: 'Demo',
+        writers: [],
+        producers: [],
+        featuredArtists: []
+      };
+      loaded = [defaultSong];
+      try {
+        localStorage.setItem('lyrical_local_drafts', JSON.stringify(loaded));
+      } catch {}
     }
 
     setDrafts(loaded);
@@ -441,45 +469,73 @@ export function useDrafts(session: any) {
   // Auto-save removed as app is purely cloud-based
 
   const selectDraft = useCallback((id: string | null) => {
-    if (id === null || id === '') {
-      setActiveDraftId(null);
-    } else if (drafts.some(d => d.id === id)) {
-      setActiveDraftId(id);
-    }
-  }, [drafts]);
+    setActiveDraftId(id || null);
+  }, []);
 
   const createDraft = useCallback(async (title: string = 'Untitled Song') => {
-    try {
-      const res = await fetch('/api/projects', {
-        method: 'POST',
-        headers: getAuthHeaders(),
-        body: JSON.stringify({ title })
-      });
-      if (!res.ok) throw new Error('Cloud create failed');
-      const data = await res.json();
-      
-      const created: Draft = {
-        id: data.id,
-        title: data.title,
-        content: '',
-        targetTemplate: '',
-        syllableTolerance: 1,
-        createdAt: Date.parse(data.created_at) || Date.now(),
-        updatedAt: Date.parse(data.created_at) || Date.now(),
-        status: data.status || 'Demo',
-        writers: parseArray(data.writers),
-        producers: parseArray(data.producers),
-        featuredArtists: parseArray(data.featured_artists),
-      };
+    const isGuest = session?.user?.id?.startsWith('guest_') || session?.access_token?.startsWith('local_guest_');
+    const isOnline = isCloudMode && healthStatus === 'connected' && !isGuest;
 
-      setDrafts(prev => [created, ...prev]);
-      setActiveDraftId(created.id);
-      return created;
-    } catch (e) {
-      console.error('Failed to create project:', e);
-      throw e;
+    if (isOnline) {
+      try {
+        const res = await fetch('/api/projects', {
+          method: 'POST',
+          headers: getAuthHeaders(),
+          body: JSON.stringify({ title })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const created: Draft = {
+            id: data.id,
+            title: data.title,
+            content: '',
+            targetTemplate: '',
+            syllableTolerance: 1,
+            createdAt: Date.parse(data.created_at) || Date.now(),
+            updatedAt: Date.parse(data.created_at) || Date.now(),
+            status: data.status || 'Demo',
+            writers: parseArray(data.writers),
+            producers: parseArray(data.producers),
+            featuredArtists: parseArray(data.featured_artists),
+          };
+
+          setDrafts(prev => [created, ...prev.filter(d => d.id !== created.id)]);
+          setActiveDraftId(created.id);
+          return created;
+        }
+      } catch (e) {
+        console.warn('Cloud create failed, creating local draft:', e);
+      }
     }
-  }, [isCloudMode, getAuthHeaders]);
+
+    // Local / Offline draft creation
+    const localCreated: Draft = {
+      id: `draft_${Date.now()}`,
+      title,
+      content: '',
+      targetTemplate: '',
+      syllableTolerance: 1,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      status: 'Demo',
+      writers: [],
+      producers: [],
+      featuredArtists: []
+    };
+
+    try {
+      const raw = localStorage.getItem('lyrical_local_drafts');
+      const existing: Draft[] = raw ? JSON.parse(raw) : [];
+      const updated = [localCreated, ...existing.filter(d => d.id !== localCreated.id)];
+      localStorage.setItem('lyrical_local_drafts', JSON.stringify(updated));
+    } catch (e) {
+      console.error('Failed to write local draft to storage:', e);
+    }
+
+    setDrafts(prev => [localCreated, ...prev.filter(d => d.id !== localCreated.id)]);
+    setActiveDraftId(localCreated.id);
+    return localCreated;
+  }, [isCloudMode, healthStatus, session, getAuthHeaders]);
 
   const updateActiveDraft = useCallback(async (updates: Partial<Omit<Draft, 'id' | 'createdAt'>>) => {
     if (!activeDraftId) return;
@@ -491,13 +547,17 @@ export function useDrafts(session: any) {
       updates.featuredArtists !== undefined ||
       updates.title !== undefined;
 
-    setDrafts(prev =>
-      prev.map(d =>
+    setDrafts(prev => {
+      const next = prev.map(d =>
         d.id === activeDraftId
           ? { ...d, ...updates, updatedAt: Date.now() }
           : d
-      )
-    );
+      );
+      try {
+        localStorage.setItem('lyrical_local_drafts', JSON.stringify(next));
+      } catch {}
+      return next;
+    });
 
     if (isCloudMode && yDoc) {
       const ydoc = yDoc;
@@ -553,7 +613,13 @@ export function useDrafts(session: any) {
   }, [activeDraftId, yDoc, isCloudMode]);
 
   const deleteDraft = useCallback(async (id: string) => {
-    setDrafts(prev => prev.filter(d => d.id !== id));
+    setDrafts(prev => {
+      const next = prev.filter(d => d.id !== id);
+      try {
+        localStorage.setItem('lyrical_local_drafts', JSON.stringify(next));
+      } catch {}
+      return next;
+    });
 
     if (activeDraftId === id) {
       setActiveDraftId(null);
@@ -575,7 +641,13 @@ export function useDrafts(session: any) {
   }, [activeDraftId, isCloudMode, getAuthHeaders]);
 
   const renameDraft = useCallback(async (id: string, newTitle: string) => {
-    setDrafts(prev => prev.map(d => d.id === id ? { ...d, title: newTitle, updatedAt: Date.now() } : d));
+    setDrafts(prev => {
+      const next = prev.map(d => d.id === id ? { ...d, title: newTitle, updatedAt: Date.now() } : d);
+      try {
+        localStorage.setItem('lyrical_local_drafts', JSON.stringify(next));
+      } catch {}
+      return next;
+    });
 
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
     if (isCloudMode && isUuid) {

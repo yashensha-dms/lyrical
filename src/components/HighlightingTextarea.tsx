@@ -7,9 +7,12 @@ import type { DecorationSet } from '@codemirror/view';
 import { EditorState, Compartment, StateField } from '@codemirror/state';
 import { history, historyKeymap, defaultKeymap, moveLineUp, moveLineDown } from '@codemirror/commands';
 import { bracketMatching, indentOnInput } from '@codemirror/language';
-import { closeBrackets, closeBracketsKeymap, autocompletion, completionKeymap } from '@codemirror/autocomplete';
+import { closeBrackets, closeBracketsKeymap, autocompletion, completionKeymap, startCompletion, completionStatus, currentCompletions, closeCompletion } from '@codemirror/autocomplete';
+import type { CompletionContext, CompletionResult } from '@codemirror/autocomplete';
 import { yCollab } from 'y-codemirror.next';
 import { countLineSyllables } from '../utils/syllables';
+import { isMalayalam, countLineMalayalamMeter, loadMalayalamDictionaryData, getMalayalamWordSuggestions } from '../utils/malayalamProsody';
+import { transliterateWord, fetchGoogleTransliteration, getTransliterationSync } from '../utils/manglishTransliterate';
 import { api } from '../utils/apiClient';
 
 interface HighlightingTextareaProps {
@@ -21,6 +24,8 @@ interface HighlightingTextareaProps {
   className?: string;
   style?: React.CSSProperties;
   subconsciousActive?: boolean;
+  manglishActive?: boolean;
+  onToggleManglish?: () => void;
   isMobile?: boolean;
   onFocus?: () => void;
   onBlur?: () => void;
@@ -92,7 +97,9 @@ class SyllableMarker extends GutterMarker {
 
     // 2. Syllable Badge
     const isHeader = this.text.startsWith('[');
-    const count = countLineSyllables(this.text);
+    const isMl = isMalayalam(this.text);
+    const mlMeter = isMl ? countLineMalayalamMeter(this.text) : null;
+    const count = mlMeter ? mlMeter.aksharas : countLineSyllables(this.text);
     
     if (!isHeader && count > 0) {
       const badgeSpan = document.createElement("span");
@@ -156,7 +163,9 @@ class SyllableMarker extends GutterMarker {
         badgeSpan.innerText = String(count);
       }
 
-      if (targets.length > 0) {
+      if (isMl && mlMeter) {
+        badgeSpan.title = `${mlMeter.aksharas} അക്ഷരം | ${mlMeter.matras} മാത്ര (${mlMeter.wordCount} വാക്കുകൾ)`;
+      } else if (targets.length > 0) {
         badgeSpan.title = isMismatch
           ? `Mismatch! Target: ${targetCount}, Actual: ${count}`
           : isNearMatch
@@ -222,9 +231,50 @@ const lyricDecorationsField = StateField.define<DecorationSet>({
   }
 });
 
+/**
+ * Extracts a complete word around the given document position.
+ * Handles Unicode Malayalam characters, conjuncts, chillus, and English letters.
+ */
+function getWordAtDocPos(view: EditorView, pos: number): { word: string; from: number; to: number } | null {
+  const doc = view.state.doc;
+  if (pos < 0 || pos > doc.length) return null;
+  const line = doc.lineAt(pos);
+  const offset = pos - line.from;
+  const lineText = line.text;
 
+  const WORD_REGEX = /[\w\u0D00-\u0D7F']+/g;
+  let match: RegExpExecArray | null;
+  while ((match = WORD_REGEX.exec(lineText)) !== null) {
+    const start = match.index;
+    const end = match.index + match[0].length;
+    if (offset >= start && offset <= end) {
+      const rawWord = match[0];
+      const clean = rawWord.replace(/^[^\w\u0D00-\u0D7F']+|[^\w\u0D00-\u0D7F']+$/g, '').trim();
+      if (clean) {
+        return {
+          word: clean,
+          from: line.from + start,
+          to: line.from + end
+        };
+      }
+    }
+  }
 
+  const cmWord = view.state.wordAt(pos);
+  if (cmWord) {
+    const raw = view.state.sliceDoc(cmWord.from, cmWord.to);
+    const clean = raw.replace(/^[^\w\u0D00-\u0D7F']+|[^\w\u0D00-\u0D7F']+$/g, '').trim();
+    if (clean) {
+      return {
+        word: clean,
+        from: cmWord.from,
+        to: cmWord.to
+      };
+    }
+  }
 
+  return null;
+}
 
 export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, HighlightingTextareaProps>(({
   value,
@@ -235,6 +285,8 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
   className,
   style,
   subconsciousActive,
+  manglishActive,
+  onToggleManglish,
   isMobile,
   onFocus,
   onBlur,
@@ -254,10 +306,23 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
   const viewRef = useRef<EditorView | null>(null);
   const isLineCopyRef = useRef(false);
   const lastCopiedLineTextRef = useRef("");
+  const lastTransliterationRef = useRef<{
+    fromPos: number;
+    toPos: number;
+    mlWord: string;
+    latinWord: string;
+    timestamp: number;
+  } | null>(null);
+
+  // Preload Malayalam dictionary datasets for Ctrl+Space suggestions
+  useEffect(() => {
+    loadMalayalamDictionaryData();
+  }, []);
 
   // Custom context menu state
   const [showContextMenu, setShowContextMenu] = React.useState(false);
   const [contextCoords, setContextCoords] = React.useState({ top: 0, left: 0 });
+  const [contextWord, setContextWord] = React.useState('');
 
   // Export popup state
   const [showExportModal, setShowExportModal] = React.useState(false);
@@ -273,6 +338,8 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
   const latestRef = React.useRef({
     exportFilename,
     title,
+    manglishActive,
+    onToggleManglish,
     showContextMenu,
     contextCoords,
     onChange,
@@ -291,6 +358,8 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
     latestRef.current = {
       exportFilename,
       title,
+      manglishActive,
+      onToggleManglish,
       showContextMenu,
       contextCoords,
       onChange,
@@ -400,6 +469,27 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
     },
     ".cm-ySelectionCaret": {
       animation: "cm-yBlink 1.2s steps(1) infinite"
+    },
+    // Autocomplete dropdown styling
+    ".cm-tooltip-autocomplete": {
+      backgroundColor: "var(--color-paper-dark, #F2EFE9) !important",
+      border: "1px solid var(--color-paper-darker, #E4DDD4) !important",
+      borderRadius: "10px !important",
+      boxShadow: "0 4px 16px rgba(44, 42, 41, 0.12) !important",
+      padding: "4px !important",
+    },
+    ".cm-tooltip-autocomplete ul": {
+      fontFamily: "'EB Garamond', Lora, Merriweather, Georgia, serif !important",
+      fontSize: "15px !important",
+    },
+    ".cm-tooltip-autocomplete ul li": {
+      padding: "4px 10px !important",
+      borderRadius: "6px !important",
+    },
+    ".cm-tooltip-autocomplete ul li[aria-selected]": {
+      backgroundColor: "rgba(192, 105, 78, 0.15) !important",
+      color: "var(--color-terracotta, #C0694E) !important",
+      fontWeight: "bold !important",
     }
   });
 
@@ -637,6 +727,93 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
     }
   }, [value, yText, provider]);
 
+  // Autocompletion source powered by Google Input Tools (ml-t-i0-und) & Malayalam Song Thesaurus
+  const malayalamCompletionSource = async (context: CompletionContext): Promise<CompletionResult | null> => {
+    // A. Check for Latin / Manglish word before cursor
+    const latinWord = context.matchBefore(/[a-zA-Z]+/);
+    if (latinWord && (latinWord.from < latinWord.to || context.explicit)) {
+      try {
+        const candidates = await fetchGoogleTransliteration(latinWord.text, 5);
+        const options: any[] = candidates.map((c, index) => ({
+          label: c,
+          displayLabel: `${index + 1}. ${c}`,
+          detail: index === 0 ? 'Google' : undefined,
+          type: 'text',
+          boost: 100 - index,
+          apply: (view: EditorView, _completion: any, from: number, to: number) => {
+            view.dispatch({
+              changes: { from, to, insert: c + " " },
+              selection: { anchor: from + c.length + 1 }
+            });
+            lastTransliterationRef.current = {
+              fromPos: from,
+              toPos: from + c.length + 1,
+              mlWord: c,
+              latinWord: latinWord.text,
+              timestamp: Date.now()
+            };
+          }
+        }));
+
+        // English option so user can always retain the exact Latin letters
+        if (!candidates.includes(latinWord.text)) {
+          options.push({
+            label: latinWord.text,
+            displayLabel: `${options.length + 1}. ${latinWord.text} (English)`,
+            type: 'text',
+            boost: 10,
+            apply: (view: EditorView, _completion: any, from: number, to: number) => {
+              view.dispatch({
+                changes: { from, to, insert: latinWord.text + " " },
+                selection: { anchor: from + latinWord.text.length + 1 }
+              });
+            }
+          });
+        }
+
+        return {
+          from: latinWord.from,
+          to: latinWord.to,
+          options,
+          filter: false // CRITICAL: Disable CM's label filtering so Malayalam characters aren't filtered out by Latin input!
+        };
+      } catch {
+        return null;
+      }
+    }
+
+    // B. Check for Malayalam word before cursor (for Ctrl+Space synonym and poetic word discovery)
+    const mlWord = context.matchBefore(/[\u0D00-\u0D7F]+/);
+    if (mlWord && (mlWord.from < mlWord.to || context.explicit)) {
+      const query = mlWord.text.trim();
+      if (!query) return null;
+
+      const suggestions = getMalayalamWordSuggestions(query);
+      if (suggestions.length === 0) return null;
+
+      return {
+        from: mlWord.from,
+        to: mlWord.to,
+        options: suggestions.map((s, index) => ({
+          label: s.word,
+          displayLabel: `${index + 1}. ${s.word}`,
+          detail: s.detail,
+          type: 'text',
+          boost: 100 - index,
+          apply: (view: EditorView, _completion: any, from: number, to: number) => {
+            view.dispatch({
+              changes: { from, to, insert: s.word + " " },
+              selection: { anchor: from + s.word.length + 1 }
+            });
+          }
+        })),
+        filter: false // Allow diverse synonyms without strict prefix match
+      };
+    }
+
+    return null;
+  };
+
   // Initialize CodeMirror editor instance
   useEffect(() => {
     if (!containerRef.current) return;
@@ -650,10 +827,74 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
       indentOnInput(),
       bracketMatching(),
       closeBrackets(),
-      autocompletion(),
+      autocompletion({ override: [malayalamCompletionSource] }),
       keymap.of([
+        {
+          key: "Ctrl-Space",
+          run: (view) => {
+            return startCompletion(view);
+          }
+        },
+        {
+          key: "Mod-Space",
+          run: (view) => {
+            return startCompletion(view);
+          }
+        },
+        // Number keys 1-9 to select candidates directly when completion popup is active (Kuttipencil / Google IME style)
+        ...(['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((numStr, idx) => ({
+          key: numStr,
+          run: (view: EditorView) => {
+            if (completionStatus(view.state) === "active") {
+              const completions = currentCompletions(view.state);
+              if (completions && completions[idx]) {
+                const comp = completions[idx];
+                const active = view.state.selection.main;
+                if (typeof comp.apply === "function") {
+                  comp.apply(view, comp, active.from, active.to);
+                } else {
+                  const insertText = (comp.apply || comp.label) + " ";
+                  view.dispatch({
+                    changes: { from: active.from, to: active.to, insert: insertText },
+                    selection: { anchor: active.from + insertText.length }
+                  });
+                }
+                closeCompletion(view);
+                return true;
+              }
+            }
+            return false;
+          }
+        }))),
         { key: "Alt-ArrowUp", run: moveLineUp },
         { key: "Alt-ArrowDown", run: moveLineDown },
+        {
+          key: "Backspace",
+          run: (view) => {
+            if (latestRef.current.manglishActive && lastTransliterationRef.current) {
+              const { fromPos, toPos, latinWord } = lastTransliterationRef.current;
+              const head = view.state.selection.main.head;
+              const empty = view.state.selection.main.empty;
+
+              // If cursor is directly at the space/newline after the freshly converted word:
+              if (empty && head === toPos) {
+                lastTransliterationRef.current = null;
+                // Revert Malayalam word + trailing char back to original Latin spelling
+                view.dispatch({
+                  changes: { from: fromPos, to: toPos, insert: latinWord },
+                  selection: { anchor: fromPos + latinWord.length }
+                });
+                // Immediately open candidate selection dropdown (Kuttipencil behavior)
+                setTimeout(() => {
+                  startCompletion(view);
+                }, 10);
+                return true;
+              }
+            }
+            lastTransliterationRef.current = null;
+            return false;
+          }
+        },
         {
           key: "Ctrl-c",
           run: (view) => {
@@ -709,6 +950,120 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
             return true;
           }
         },
+        {
+          key: "Mod-m",
+          run: () => {
+            if (latestRef.current.onToggleManglish) {
+              latestRef.current.onToggleManglish();
+              return true;
+            }
+            return false;
+          }
+        },
+        {
+          key: "Space",
+          run: (view) => {
+            if (latestRef.current.manglishActive) {
+              const pos = view.state.selection.main.head;
+              const line = view.state.doc.lineAt(pos);
+              const textBefore = line.text.slice(0, pos - line.from);
+              const match = textBefore.match(/([a-zA-Z]+)$/);
+              if (match) {
+                const latinWord = match[1];
+                const fromPos = pos - latinWord.length;
+                const cached = getTransliterationSync(latinWord);
+                const mlWord = cached || transliterateWord(latinWord);
+
+                view.dispatch({
+                  changes: { from: fromPos, to: pos, insert: mlWord + " " },
+                  selection: { anchor: fromPos + mlWord.length + 1 }
+                });
+
+                lastTransliterationRef.current = {
+                  fromPos,
+                  toPos: fromPos + mlWord.length + 1,
+                  mlWord,
+                  latinWord,
+                  timestamp: Date.now()
+                };
+
+                if (!cached) {
+                  fetchGoogleTransliteration(latinWord).then(candidates => {
+                    const top = candidates[0];
+                    if (top && top !== mlWord) {
+                      const curDoc = view.state.doc.toString();
+                      const expected = mlWord + " ";
+                      if (curDoc.slice(fromPos, fromPos + expected.length) === expected) {
+                        view.dispatch({
+                          changes: { from: fromPos, to: fromPos + mlWord.length, insert: top }
+                        });
+                        if (lastTransliterationRef.current?.fromPos === fromPos) {
+                          lastTransliterationRef.current.mlWord = top;
+                          lastTransliterationRef.current.toPos = fromPos + top.length + 1;
+                        }
+                      }
+                    }
+                  });
+                }
+                return true;
+              }
+            }
+            lastTransliterationRef.current = null;
+            return false;
+          }
+        },
+        {
+          key: "Enter",
+          run: (view) => {
+            if (latestRef.current.manglishActive) {
+              const pos = view.state.selection.main.head;
+              const line = view.state.doc.lineAt(pos);
+              const textBefore = line.text.slice(0, pos - line.from);
+              const match = textBefore.match(/([a-zA-Z]+)$/);
+              if (match) {
+                const latinWord = match[1];
+                const fromPos = pos - latinWord.length;
+                const cached = getTransliterationSync(latinWord);
+                const mlWord = cached || transliterateWord(latinWord);
+
+                view.dispatch({
+                  changes: { from: fromPos, to: pos, insert: mlWord + "\n" },
+                  selection: { anchor: fromPos + mlWord.length + 1 }
+                });
+
+                lastTransliterationRef.current = {
+                  fromPos,
+                  toPos: fromPos + mlWord.length + 1,
+                  mlWord,
+                  latinWord,
+                  timestamp: Date.now()
+                };
+
+                if (!cached) {
+                  fetchGoogleTransliteration(latinWord).then(candidates => {
+                    const top = candidates[0];
+                    if (top && top !== mlWord) {
+                      const curDoc = view.state.doc.toString();
+                      const expected = mlWord + "\n";
+                      if (curDoc.slice(fromPos, fromPos + expected.length) === expected) {
+                        view.dispatch({
+                          changes: { from: fromPos, to: fromPos + mlWord.length, insert: top }
+                        });
+                        if (lastTransliterationRef.current?.fromPos === fromPos) {
+                          lastTransliterationRef.current.mlWord = top;
+                          lastTransliterationRef.current.toPos = fromPos + top.length + 1;
+                        }
+                      }
+                    }
+                  });
+                }
+                return true;
+              }
+            }
+            lastTransliterationRef.current = null;
+            return false;
+          }
+        },
         ...historyKeymap,
         ...defaultKeymap,
         ...closeBracketsKeymap,
@@ -733,6 +1088,15 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
         }
         if (update.docChanged) {
           latestRef.current.onChange(update.state.doc.toString());
+          if (latestRef.current.manglishActive) {
+            const pos = update.state.selection.main.head;
+            const line = update.state.doc.lineAt(pos);
+            const textBefore = line.text.slice(0, pos - line.from);
+            const match = textBefore.match(/([a-zA-Z]+)$/);
+            if (match && match[1].length >= 2) {
+              fetchGoogleTransliteration(match[1]);
+            }
+          }
         }
         if (latestRef.current.onScroll && update.geometryChanged) {
           const mockEvent = {
@@ -755,24 +1119,21 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
           if (hideGutters) return;
           event.preventDefault();
           
-          let word = "";
+          let selectedWord = "";
           const { from, to } = view.state.selection.main;
           if (from !== to) {
-            word = view.state.sliceDoc(from, to).trim();
+            const raw = view.state.sliceDoc(from, to).trim();
+            selectedWord = raw.replace(/^[^\w\u0D00-\u0D7F']+|[^\w\u0D00-\u0D7F']+$/g, '').trim();
           } else {
             const pos = view.posAtCoords({ x: event.clientX, y: event.clientY });
             if (pos !== null) {
-              const wordRange = view.state.wordAt(pos);
-              if (wordRange) {
-                word = view.state.sliceDoc(wordRange.from, wordRange.to).trim();
+              const wordInfo = getWordAtDocPos(view, pos);
+              if (wordInfo) {
+                selectedWord = wordInfo.word;
               }
             }
           }
-          const cleanWord = word.replace(/^[^\w']+|[^\w']+$/g, '');
-          if (cleanWord && latestRef.current.onWordDoubleClicked) {
-            latestRef.current.onWordDoubleClicked(cleanWord);
-          }
-          
+          setContextWord(selectedWord);
           triggerContextMenu(event.clientX, event.clientY);
           return true;
         },
@@ -828,16 +1189,18 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
         dblclick: (event, view) => {
           const pos = view.posAtCoords({ x: event.clientX, y: event.clientY });
           if (pos !== null) {
-            const wordRange = view.state.wordAt(pos);
-            if (wordRange) {
-              const word = view.state.sliceDoc(wordRange.from, wordRange.to).trim();
-              const cleanWord = word.replace(/^[^\w']+|[^\w']+$/g, '');
-              if (cleanWord && latestRef.current.onWordDoubleClicked) {
-                latestRef.current.onWordDoubleClicked(cleanWord);
+            const wordInfo = getWordAtDocPos(view, pos);
+            if (wordInfo) {
+              view.dispatch({
+                selection: { anchor: wordInfo.from, head: wordInfo.to }
+              });
+              if (latestRef.current.onWordDoubleClicked) {
+                latestRef.current.onWordDoubleClicked(wordInfo.word);
               }
+              return true;
             }
           }
-          return true;
+          return false;
         }
       })
     ];
@@ -872,44 +1235,39 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
       const view = viewRef.current;
       setTimeout(() => {
         const { from, to } = view.state.selection.main;
-        let word = "";
         if (from !== to) {
-          word = view.state.sliceDoc(from, to).trim();
-        } else {
-          const pos = view.posAtCoords({ x: e.clientX, y: e.clientY });
-          if (pos !== null) {
-            const wordRange = view.state.wordAt(pos);
-            if (wordRange) {
-              word = view.state.sliceDoc(wordRange.from, wordRange.to).trim();
-            }
+          const word = view.state.sliceDoc(from, to).trim();
+          const cleanWord = word.replace(/^[^\w\u0D00-\u0D7F']+|[^\w\u0D00-\u0D7F']+$/g, '').trim();
+          if (cleanWord && latestRef.current.onWordDoubleClicked) {
+            latestRef.current.onWordDoubleClicked(cleanWord);
+            return;
           }
         }
-        const cleanWord = word.replace(/^[^\w']+|[^\w']+$/g, '');
-        if (cleanWord && latestRef.current.onWordDoubleClicked) {
-          latestRef.current.onWordDoubleClicked(cleanWord);
+        const pos = view.posAtCoords({ x: e.clientX, y: e.clientY });
+        if (pos !== null) {
+          const wordInfo = getWordAtDocPos(view, pos);
+          if (wordInfo && latestRef.current.onWordDoubleClicked) {
+            latestRef.current.onWordDoubleClicked(wordInfo.word);
+          }
         }
       }, 10);
     }
   };
 
   const handleFindRhymesFromMenu = () => {
-    if (viewRef.current) {
+    let wordToLookup = contextWord;
+    if (!wordToLookup && viewRef.current) {
       const view = viewRef.current;
       const { from, to } = view.state.selection.main;
-      let word = "";
       if (from !== to) {
-        word = view.state.sliceDoc(from, to).trim();
+        wordToLookup = view.state.sliceDoc(from, to).replace(/^[^\w\u0D00-\u0D7F']+|[^\w\u0D00-\u0D7F']+$/g, '').trim();
       } else {
-        const pos = view.state.selection.main.head;
-        const wordRange = view.state.wordAt(pos);
-        if (wordRange) {
-          word = view.state.sliceDoc(wordRange.from, wordRange.to).trim();
-        }
+        const wordInfo = getWordAtDocPos(view, view.state.selection.main.head);
+        if (wordInfo) wordToLookup = wordInfo.word;
       }
-      const cleanWord = word.replace(/^[^\w']+|[^\w']+$/g, '');
-      if (cleanWord && latestRef.current.onWordDoubleClicked) {
-        latestRef.current.onWordDoubleClicked(cleanWord);
-      }
+    }
+    if (wordToLookup && latestRef.current.onWordDoubleClicked) {
+      latestRef.current.onWordDoubleClicked(wordToLookup);
     }
     setShowContextMenu(false);
   };
@@ -938,13 +1296,18 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
           }}
           onClick={(e) => e.stopPropagation()}
         >
-          <button
-            className="w-full text-left px-3 py-1.5 text-xs text-terracotta hover:bg-paper-active transition cursor-pointer flex items-center justify-between font-bold"
-            onClick={handleFindRhymesFromMenu}
-          >
-            <span>Find Rhymes</span>
-            <span className="text-[10px] text-ink-light font-mono">Lookup</span>
-          </button>
+          {(() => {
+            const isMalayalamContext = isMalayalam(contextWord) || !!latestRef.current.manglishActive;
+            return (
+              <button
+                className="w-full text-left px-3 py-1.5 text-xs text-terracotta hover:bg-paper-active transition cursor-pointer flex items-center justify-between font-bold"
+                onClick={handleFindRhymesFromMenu}
+              >
+                <span>{isMalayalamContext ? 'Find Malayalam Synonyms' : 'Find Rhymes'}</span>
+                <span className="text-[10px] text-ink-light font-mono">{isMalayalamContext ? 'നിഘണ്ടു' : 'Lookup'}</span>
+              </button>
+            );
+          })()}
           <div className="border-t border-paper-darker my-1" style={{ borderColor: 'var(--color-paper-darker, #E4DDD4)' }} />
           <button
             className="w-full text-left px-3 py-1.5 text-xs text-ink hover:bg-paper-active transition cursor-pointer flex items-center justify-between"

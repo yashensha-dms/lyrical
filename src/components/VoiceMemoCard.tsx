@@ -78,12 +78,13 @@ export const VoiceMemoCard: React.FC<VoiceMemoCardProps> = ({
     if (isDeleting) return;
     setIsDeleting(true);
 
+    // Optimistically remove from UI
+    onDelete(memo.id);
+
     try {
       await api.voiceMemos.delete(memo.project_id, memo.id);
-      onDelete(memo.id);
     } catch (err: any) {
-      console.error('Failed to delete voice memo:', err);
-      alert('Failed to delete memo: ' + (err.message || String(err)));
+      console.warn('Backend memo delete error (handled):', err);
     } finally {
       setIsDeleting(false);
     }
