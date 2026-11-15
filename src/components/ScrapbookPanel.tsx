@@ -4,7 +4,7 @@ import { BubbleMenu, FloatingMenu } from '@tiptap/react/menus';
 import StarterKit from '@tiptap/starter-kit';
 import Image from '@tiptap/extension-image';
 import Youtube from '@tiptap/extension-youtube';
-import { supabase } from '../utils/supabaseClient';
+import { api } from '../utils/apiClient';
 import { Loader2, Bold, Italic, Strikethrough, Heading1, Heading2, List, Quote } from 'lucide-react';
 
 function getImagesFromJSON(node: any): string[] {
@@ -87,20 +87,7 @@ export const ScrapbookPanel: React.FC<ScrapbookPanelProps> = ({ projectId }) => 
 
       saveTimeoutRef.current = setTimeout(async () => {
         try {
-          const { error } = await supabase
-            .from('scrapbook_entries')
-            .upsert(
-              {
-                project_id: projectId,
-                content: json,
-                updated_at: new Date().toISOString(),
-              },
-              { onConflict: 'project_id' }
-            );
-
-          if (error) {
-            console.error('Failed to auto-save scrapbook entry:', error.message);
-          }
+          await api.scrapbook.save(projectId, json);
         } catch (err) {
           console.error('Error auto-saving scrapbook entry:', err);
         }
@@ -126,15 +113,10 @@ export const ScrapbookPanel: React.FC<ScrapbookPanelProps> = ({ projectId }) => 
             // Re-verify the image is still missing from the editor document before deleting
             const latestImages = getImagesFromJSON(editor.getJSON());
             if (!latestImages.includes(url)) {
-              const storagePath = getStoragePathFromUrl(url);
-              if (storagePath) {
-                console.log('Deleting removed image from storage:', storagePath);
-                const { error } = await supabase.storage.from('scrapbook').remove([storagePath]);
-                if (error) {
-                  console.error('Failed to delete image from storage:', error.message);
-                } else {
-                  knownImagesRef.current.delete(url);
-                }
+              if (url.includes('/api/storage/file/')) {
+                const key = decodeURIComponent(url.split('/api/storage/file/')[1]);
+                await api.storage.delete(key).catch(() => {});
+                knownImagesRef.current.delete(url);
               }
             }
             delete pendingDeletionsRef.current[url];
@@ -154,21 +136,12 @@ export const ScrapbookPanel: React.FC<ScrapbookPanelProps> = ({ projectId }) => 
 
     async function loadScrapbook() {
       try {
-        const { data, error } = await supabase
-          .from('scrapbook_entries')
-          .select('content')
-          .eq('project_id', projectId)
-          .maybeSingle();
-
-        if (error) {
-          console.error('Error fetching scrapbook entry:', error.message);
-        }
+        const data = await api.scrapbook.get(projectId);
 
         if (isMounted) {
-          if (data?.content) {
-            editor.commands.setContent(data.content);
-            // Populate initial set of images currently in the document
-            const initialImages = getImagesFromJSON(data.content);
+          if (data && Object.keys(data).length > 0) {
+            editor.commands.setContent(data);
+            const initialImages = getImagesFromJSON(data);
             knownImagesRef.current = new Set(initialImages);
           } else {
             editor.commands.setContent({
@@ -205,45 +178,22 @@ export const ScrapbookPanel: React.FC<ScrapbookPanelProps> = ({ projectId }) => 
     };
   }, [projectId, editor]);
 
-  // Upload image to Supabase Storage and insert inline at cursor
+  // Upload image to Cloudflare R2 and insert inline at cursor
   const uploadAndInsertImage = async (file: File) => {
     if (!editor) return;
     setUploadingImage(true);
 
     try {
-      const fileExt = file.name.split('.').pop() || 'png';
-      const fileName = `${projectId}/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
-      const filePath = `scrapbook/${fileName}`;
-
-      // Upload file to the 'scrapbook' bucket
-      const { error: uploadError } = await supabase.storage
-        .from('scrapbook')
-        .upload(filePath, file, {
-          cacheControl: '3600',
-          upsert: true,
-        });
-
-      if (uploadError) {
-        throw uploadError;
-      }
-
-      // Get public URL
-      const { data: urlData } = supabase.storage
-        .from('scrapbook')
-        .getPublicUrl(filePath);
-
-      if (!urlData.publicUrl) {
-        throw new Error('Could not get public URL for uploaded file.');
-      }
+      const { url } = await api.storage.upload(file, file.name);
 
       // Register the uploaded image as a known image
-      knownImagesRef.current.add(urlData.publicUrl);
+      knownImagesRef.current.add(url);
 
       // Insert image into TipTap at the cursor position
-      editor.chain().focus().setImage({ src: urlData.publicUrl }).run();
+      editor.chain().focus().setImage({ src: url }).run();
     } catch (err: any) {
       console.error('Failed to upload pasted image:', err);
-      alert('Failed to upload image: ' + (err.message || String(err)));
+      alert('Failed to upload image to Cloudflare R2: ' + err.message);
     } finally {
       setUploadingImage(false);
     }

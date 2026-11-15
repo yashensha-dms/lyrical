@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useWavesurfer } from '@wavesurfer/react';
 import { Play, Pause, Trash2, Loader2 } from 'lucide-react';
-import { supabase } from '../utils/supabaseClient';
+import { api } from '../utils/apiClient';
 
 interface VoiceMemo {
   id: string;
@@ -79,30 +79,7 @@ export const VoiceMemoCard: React.FC<VoiceMemoCardProps> = ({
     setIsDeleting(true);
 
     try {
-      // 1. Delete from Supabase Storage
-      const urlParts = memo.audio_url.split('/public/audio/');
-      if (urlParts.length === 2) {
-        const storagePath = urlParts[1];
-        const { error: storageError } = await supabase.storage
-          .from('audio')
-          .remove([storagePath]);
-
-        if (storageError) {
-          console.error('Error deleting from storage:', storageError.message);
-        }
-      }
-
-      // 2. Delete from Database Table
-      const { error: dbError } = await supabase
-        .from('voice_memos')
-        .delete()
-        .eq('id', memo.id);
-
-      if (dbError) {
-        throw dbError;
-      }
-
-      // Call parent callback to remove from state
+      await api.voiceMemos.delete(memo.project_id, memo.id);
       onDelete(memo.id);
     } catch (err: any) {
       console.error('Failed to delete voice memo:', err);

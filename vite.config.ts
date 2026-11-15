@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
 export default defineConfig({
-  envPrefix: ['VITE_', 'SUPABASE_'],
+  envPrefix: ['VITE_'],
   plugins: [
     react(),
     VitePWA({

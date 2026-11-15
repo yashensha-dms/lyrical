@@ -9,7 +9,7 @@ import { LandingPage } from './components/LandingPage';
 import { useDrafts } from './hooks/useDrafts';
 import { useIsMobile } from './hooks/useIsMobile';
 import { useRoute } from './hooks/useRoute';
-import { supabase } from './utils/supabaseClient';
+import { api } from './utils/apiClient';
 import { Login } from './components/Login';
 import { RightPanel } from './components/RightPanel';
 import { RightActivityBar } from './components/RightActivityBar';
@@ -19,12 +19,12 @@ function App() {
   const [loadingAuth, setLoadingAuth] = useState(true);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    api.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setLoadingAuth(false);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = api.auth.onAuthStateChange((_event, session) => {
       setSession(session);
       setLoadingAuth(false);
     });
@@ -251,7 +251,7 @@ function App() {
         <div className="flex items-center gap-3">
           <span className="text-[11px] text-ink-muted hidden sm:inline">{session?.user?.email}</span>
           <button
-            onClick={() => supabase.auth.signOut()}
+            onClick={() => api.auth.signOut()}
             className="text-[10px] uppercase font-bold text-ink-muted hover:text-terracotta transition border border-paper-darker hover:border-terracotta/30 px-2 py-1 rounded bg-paper-dark cursor-pointer focus:outline-none"
           >
             Sign Out

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import * as Y from 'yjs';
 import { WebsocketProvider } from 'y-websocket';
-import { supabase } from '../utils/supabaseClient';
+import { api } from '../utils/apiClient';
 
 const parseArray = (val: any): string[] => {
   if (Array.isArray(val)) return val;
@@ -58,14 +58,14 @@ export function useDrafts(session: any) {
     if (trimmed) {
       localStorage.setItem('lyrical_pen_name', trimmed);
       if (session) {
-        await supabase.auth.updateUser({
+        await api.auth.updateUser({
           data: { pen_name: trimmed }
         });
       }
     } else {
       localStorage.removeItem('lyrical_pen_name');
       if (session) {
-        await supabase.auth.updateUser({
+        await api.auth.updateUser({
           data: { pen_name: null }
         });
       }
@@ -580,11 +580,7 @@ export function useDrafts(session: any) {
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
     if (isCloudMode && isUuid) {
       try {
-        const { error } = await supabase
-          .from('projects')
-          .update({ title: newTitle })
-          .eq('id', id);
-        if (error) throw error;
+        await api.projects.update(id, { title: newTitle });
       } catch (e) {
         console.error('Failed to rename on cloud:', e);
       }

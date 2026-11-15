@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Plus, Trash2, CornerDownRight, Search } from 'lucide-react';
 import * as AlertDialog from '@radix-ui/react-alert-dialog';
 import * as Tooltip from '@radix-ui/react-tooltip';
-import { supabase } from '../utils/supabaseClient';
+import { api } from '../utils/apiClient';
 
 interface Phrase {
   id: string;
@@ -31,16 +31,8 @@ export const PhraseCatcher: React.FC<PhraseCatcherProps> = ({
     const fetchPhrases = async () => {
       try {
         setIsLoading(true);
-        const { data, error } = await supabase
-          .from('phrases')
-          .select('*')
-          .order('created_at', { ascending: false });
-
-        if (error) {
-          console.error('Error fetching phrases:', error.message);
-        } else if (data) {
-          setPhrases(data);
-        }
+        const data = await api.phrases.list();
+        setPhrases(data || []);
       } catch (err) {
         console.error('Error in fetchPhrases:', err);
       } finally {
@@ -59,12 +51,10 @@ export const PhraseCatcher: React.FC<PhraseCatcherProps> = ({
 
     // Generate a temporary ID for optimistic UI update
     const tempId = crypto.randomUUID();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
 
     const newPhraseItem: Phrase = {
       id: tempId,
-      user_id: user.id,
+      user_id: 'me',
       content: trimmed,
       created_at: new Date().toISOString(),
     };
@@ -74,24 +64,9 @@ export const PhraseCatcher: React.FC<PhraseCatcherProps> = ({
     setNewPhraseText('');
 
     try {
-      const { data, error } = await supabase
-        .from('phrases')
-        .insert({
-          content: trimmed,
-          user_id: user.id,
-        })
-        .select()
-        .single();
-
-      if (error) {
-        console.error('Error saving phrase:', error.message);
-        // Rollback on error
-        setPhrases((prev) => prev.filter((p) => p.id !== tempId));
-      } else if (data) {
-        // Replace temp item with actual DB item
-        setPhrases((prev) =>
-          prev.map((p) => (p.id === tempId ? data : p))
-        );
+      const data = await api.phrases.create(trimmed, tempId);
+      if (data) {
+        setPhrases((prev) => prev.map((p) => (p.id === tempId ? data : p)));
       }
     } catch (err) {
       console.error('Exception adding phrase:', err);
@@ -101,30 +76,16 @@ export const PhraseCatcher: React.FC<PhraseCatcherProps> = ({
 
   // Handle Delete Phrase
   const handleDeletePhrase = async (id: string) => {
-    // Keep reference of deleted phrase for rollback
     const phraseToDelete = phrases.find((p) => p.id === id);
     if (!phraseToDelete) return;
 
-    // Optimistically update UI
     setPhrases((prev) => prev.filter((p) => p.id !== id));
     setDeletingPhraseId(null);
 
     try {
-      const { error } = await supabase
-        .from('phrases')
-        .delete()
-        .eq('id', id);
-
-      if (error) {
-        console.error('Error deleting phrase:', error.message);
-        // Rollback
-        setPhrases((prev) => [phraseToDelete, ...prev].sort(
-          (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-        ));
-      }
+      await api.phrases.delete(id);
     } catch (err) {
       console.error('Exception deleting phrase:', err);
-      // Rollback
       setPhrases((prev) => [phraseToDelete, ...prev].sort(
         (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
       ));

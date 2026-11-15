@@ -1,0 +1,28 @@
+{
+  "name": "songwriting-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2024-11-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "d1_databases": [
+    {
+      "binding": "songwriting_db",
+      "database_name": "songwriting-db",
+      "database_id": "612df0ce-de68-4884-adaf-0e4204284397"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "songwriting_assets",
+      "bucket_name": "songwriting-assets"
+    }
+  ],
+  "services": [
+    {
+      "binding": "RECOMMENDER",
+      "service": "songwriting-recommender"
+    }
+  ],
+  "vars": {
+    "JWT_SECRET": "lyrical_super_secret_jwt_hmac_key_2026_cf_native"
+  }
+}

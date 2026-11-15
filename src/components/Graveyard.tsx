@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { CornerDownRight, Search } from 'lucide-react';
 import * as Tooltip from '@radix-ui/react-tooltip';
-import { supabase } from '../utils/supabaseClient';
+import { api } from '../utils/apiClient';
 
 interface GraveyardEntry {
   id: string;
@@ -29,16 +29,8 @@ export const Graveyard: React.FC<GraveyardProps> = ({
   const fetchEntries = async () => {
     try {
       setIsLoading(true);
-      const { data, error } = await supabase
-        .from('graveyard')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        console.error('Error fetching graveyard:', error.message);
-      } else if (data) {
-        setEntries(data);
-      }
+      const data = await api.graveyard.list();
+      setEntries(data || []);
     } catch (err) {
       console.error('Error in fetchEntries:', err);
     } finally {

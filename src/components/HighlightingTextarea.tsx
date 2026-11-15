@@ -10,7 +10,7 @@ import { bracketMatching, indentOnInput } from '@codemirror/language';
 import { closeBrackets, closeBracketsKeymap, autocompletion, completionKeymap } from '@codemirror/autocomplete';
 import { yCollab } from 'y-codemirror.next';
 import { countLineSyllables } from '../utils/syllables';
-import { supabase } from '../utils/supabaseClient';
+import { api } from '../utils/apiClient';
 
 interface HighlightingTextareaProps {
   value: string;
@@ -429,24 +429,8 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
     if (!trimmed) return;
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
       const pName = latestRef.current.title || "Untitled Song";
-
-      const { error } = await supabase
-        .from('graveyard')
-        .insert({
-          content: trimmed,
-          project_name: pName,
-          user_id: user.id
-        });
-
-      if (error) {
-        console.error("Failed to save to graveyard:", error.message);
-        alert("Failed to save to Graveyard: " + error.message);
-        return;
-      }
+      await api.graveyard.create(trimmed, pName);
 
       view.dispatch({
         changes: { from: fromDel, to: toDel, insert: "" }

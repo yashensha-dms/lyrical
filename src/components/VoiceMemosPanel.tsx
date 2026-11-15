@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import RecordRTC from 'recordrtc';
-import { supabase } from '../utils/supabaseClient';
+import { api } from '../utils/apiClient';
 import { VoiceMemoCard } from './VoiceMemoCard';
 import { Loader2, Mic, Square, AlertCircle } from 'lucide-react';
 
@@ -36,16 +36,7 @@ export const VoiceMemosPanel: React.FC<VoiceMemosPanelProps> = ({ projectId }) =
 
     const fetchMemos = async () => {
       try {
-        const { data, error } = await supabase
-          .from('voice_memos')
-          .select('*')
-          .eq('project_id', projectId)
-          .order('created_at', { ascending: false });
-
-        if (error) {
-          throw error;
-        }
-
+        const data = await api.voiceMemos.list(projectId);
         if (isMounted) {
           setMemos(data || []);
         }
@@ -127,46 +118,13 @@ export const VoiceMemosPanel: React.FC<VoiceMemosPanelProps> = ({ projectId }) =
       // Add to memos immediately
       setMemos((prev) => [optimisticMemo, ...prev]);
 
-      // Upload to Supabase Storage & Database in the background
+      // Upload to Cloudflare R2 & Database in the background
       try {
         const uniqueFilename = `memo_${Date.now()}_${Math.random().toString(36).substring(7)}.webm`;
-        const storagePath = `audio/${uniqueFilename}`;
+        const { url: audioUrl } = await api.storage.upload(blob, uniqueFilename);
 
-        // 1. Upload to Supabase storage bucket
-        const { error: uploadError } = await supabase.storage
-          .from('audio')
-          .upload(storagePath, blob, {
-            contentType: 'audio/webm',
-            cacheControl: '3600',
-            upsert: true,
-          });
-
-        if (uploadError) {
-          throw uploadError;
-        }
-
-        // 2. Get Public URL
-        const { data: urlData } = supabase.storage
-          .from('audio')
-          .getPublicUrl(storagePath);
-
-        if (!urlData?.publicUrl) {
-          throw new Error('Failed to retrieve public audio URL.');
-        }
-
-        // 3. Save to database
-        const { data: dbMemo, error: dbError } = await supabase
-          .from('voice_memos')
-          .insert({
-            project_id: projectId,
-            audio_url: urlData.publicUrl,
-          })
-          .select()
-          .single();
-
-        if (dbError) {
-          throw dbError;
-        }
+        // Save to D1 database
+        const dbMemo = await api.voiceMemos.create(projectId, audioUrl, tempId);
 
         // Replace optimistic memo with actual database record, revoking the object URL safely
         setMemos((prev) =>

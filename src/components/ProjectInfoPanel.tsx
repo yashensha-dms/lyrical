@@ -4,7 +4,7 @@ import * as Select from '@radix-ui/react-select';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { supabase } from '../utils/supabaseClient';
+import { api } from '../utils/apiClient';
 import type { Draft } from '../hooks/useDrafts';
 
 interface ProjectInfoPanelProps {
@@ -153,7 +153,7 @@ export const ProjectInfoPanel: React.FC<ProjectInfoPanelProps> = ({
 
     async function loadInfo() {
       try {
-        const { data: { session } } = await supabase.auth.getSession();
+        const { data: { session } } = await api.auth.getSession();
         const token = session?.access_token;
         if (!token) return;
 

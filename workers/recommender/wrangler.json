@@ -1,0 +1,16 @@
+{
+  "name": "songwriting-recommender",
+  "main": "src/index.ts",
+  "compatibility_date": "2024-11-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "d1_databases": [
+    {
+      "binding": "songwriting_rhymes_db",
+      "database_name": "songwriting-rhymes-db",
+      "database_id": "c6e4a93d-de7c-4157-861e-9c7dcfc57a16"
+    }
+  ],
+  "ai": {
+    "binding": "AI"
+  }
+}

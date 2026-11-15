@@ -4,12 +4,17 @@
   "version": "2.5.0",
   "type": "module",
   "scripts": {
-    "dev": "concurrently --kill-others \"vite\" \"tsx server/index.ts\" \"venv\\Scripts\\python -m uvicorn rhyme_server:app --port 8001\"",
-    "server": "tsx server/index.ts",
-    "build": "tsc -b && vite build && (python3 -m venv venv || python -m venv venv) && venv/bin/pip install -r requirements.txt",
+    "dev": "vite",
+    "dev:api": "wrangler dev --config workers/api/wrangler.json",
+    "dev:recommender": "wrangler dev --config workers/recommender/wrangler.json",
+    "build": "tsc -b && vite build",
+    "build:pages": "tsc -b && vite build",
+    "deploy:pages": "wrangler pages deploy dist --project-name=songwriting --force",
+    "deploy:api": "wrangler deploy --config workers/api/wrangler.json",
+    "deploy:recommender": "wrangler deploy --config workers/recommender/wrangler.json",
+    "deploy:all": "npm run build && npm run deploy:recommender && npm run deploy:api && npm run deploy:pages",
     "lint": "eslint .",
-    "preview": "vite preview",
-    "start": "concurrently --kill-others \"tsx server/index.ts\" \"venv/bin/python3 -m uvicorn rhyme_server:app --host 127.0.0.1 --port 8001 || venv/bin/python -m uvicorn rhyme_server:app --host 127.0.0.1 --port 8001 || python3 -m uvicorn rhyme_server:app --host 127.0.0.1 --port 8001\""
+    "preview": "vite preview"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.4.0",
@@ -19,7 +24,6 @@
     "@radix-ui/react-select": "^2.2.6",
     "@radix-ui/react-tabs": "^1.1.13",
     "@radix-ui/react-tooltip": "^1.2.8",
-    "@supabase/supabase-js": "^2.106.1",
     "@tiptap/extension-bubble-menu": "^3.23.6",
     "@tiptap/extension-floating-menu": "^3.23.6",
     "@tiptap/extension-image": "^3.23.6",
