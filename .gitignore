@@ -1,30 +1,56 @@
-# Logs
-logs
-*.log
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build and Production Artifacts
+dist/
+dist-ssr/
+*.local
+
+# Cloudflare & Wrangler
+.wrangler/
+.mf/
+
+# Environment Variables & Secrets
 .env
+.env.*
+!.env.example
+
+# Logs
+logs/
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
-lerna-debug.log*
 
-node_modules
-dist
-dist-ssr
-*.local
-
-# Editor directories and files
+# Editor & OS files
 .vscode/*
 !.vscode/extensions.json
-.idea
+.idea/
 .DS_Store
+Thumbs.db
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
 
-# Python virtual environments & caches
+# Database & Large Model Binaries
+*.db
+*.sqlite
+*.sqlite3
+*.model
+*.bin
+*.pt
+
+# SQL dumps (preserve only official D1 schemas)
+d1/*.sql
+!d1/app-schema.sql
+!d1/rhymes-schema.sql
+
+# Python caches & virtual environments
 venv/
 .venv/
 __pycache__/
@@ -32,7 +58,5 @@ __pycache__/
 *.pyo
 *.pyd
 
-# Local database files
-*.db
-!rhyme_data.db
-
+# Agent and tool workspace caches
+.opencode/
