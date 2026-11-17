@@ -2,6 +2,86 @@
 @import "tailwindcss";
 @config "../tailwind.config.js";
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   Theme: CSS Custom Properties (Light + Dark)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  /* Paper / Background */
+  --color-paper: #FAF8F5;
+  --color-paper-dark: #F2EFE9;
+  --color-paper-darker: #E4DDD4;
+  --color-paper-active: #EDE8E1;
+
+  /* Ink / Text */
+  --color-ink: #2C2A29;
+  --color-ink-muted: #7A736A;
+  --color-ink-light: #B0A89E;
+
+  /* Accent: Terracotta */
+  --color-terracotta: #ed2a15;
+  --color-terracotta-hover: #c81f0d;
+  --color-terracotta-light: #FDF0EC;
+
+  /* Accent: Amber */
+  --color-amber: #ff7364;
+  --color-amber-light: #FEF6E4;
+
+  /* Scrollbar */
+  --color-scrollbar: #C9C1B8;
+  --color-scrollbar-hover: #A89E95;
+
+  /* Shadows */
+  --shadow-paper-sm: 0 1px 2px rgba(44, 42, 41, 0.05);
+  --shadow-paper-md: 0 4px 6px -1px rgba(44, 42, 41, 0.08), 0 2px 4px -1px rgba(44, 42, 41, 0.03);
+
+  /* Focus ring */
+  --color-focus-ring: #ffa79d;
+
+  /* Ink overlay (for radix overlays, etc.) */
+  --ink-overlay: rgba(44, 42, 41, 0.10);
+}
+
+.dark {
+  /* Paper / Background — OLED Black */
+  --color-paper: #000000;
+  --color-paper-dark: #0D0D0D;
+  --color-paper-darker: #1A1A1A;
+  --color-paper-active: #1F1F1F;
+
+  /* Ink / Text */
+  --color-ink: #E8E4DF;
+  --color-ink-muted: #8A8580;
+  --color-ink-light: #4A4540;
+
+  /* Accent: Terracotta (brighter for WCAG contrast on black) */
+  --color-terracotta: #FF4632;
+  --color-terracotta-hover: #ed2a15;
+  --color-terracotta-light: #1A0F0B;
+
+  /* Accent: Amber */
+  --color-amber: #FF4632;
+  --color-amber-light: #1A150A;
+
+  /* Scrollbar */
+  --color-scrollbar: #2A2725;
+  --color-scrollbar-hover: #3D3835;
+
+  /* Shadows — invisible on OLED black, use subtle border glow instead */
+  --shadow-paper-sm: 0 0 0 0 transparent;
+  --shadow-paper-md: 0 0 0 0 transparent;
+
+  /* Focus ring */
+  --color-focus-ring: #ffa79d;
+
+  /* Ink overlay */
+  --ink-overlay: rgba(0, 0, 0, 0.40);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Base Styles
+   ═══════════════════════════════════════════════════════════════════════════ */
+
 body {
   @apply bg-paper text-ink font-sans antialiased overflow-hidden w-screen select-none;
   height: 100vh;
@@ -13,7 +93,7 @@ input, textarea, [contenteditable="true"] {
   @apply select-text;
 }
 
-/* Custom minimal scrollbar — warm parchment aesthetic */
+/* Custom minimal scrollbar — theme-aware */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -24,19 +104,19 @@ input, textarea, [contenteditable="true"] {
 }
 
 ::-webkit-scrollbar-thumb {
-  background-color: #C9C1B8;
+  background-color: var(--color-scrollbar);
   border-radius: 4px;
   border: 2px solid transparent;
   background-clip: padding-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background-color: #A89E95;
+  background-color: var(--color-scrollbar-hover);
 }
 
 /* Focus ring override for smooth writing */
 *:focus-visible {
-  outline: 2px solid #C0694E;
+  outline: 2px solid var(--color-focus-ring);
   outline-offset: 1px;
 }
 
@@ -54,52 +134,53 @@ textarea:focus-visible,
   user-select: none !important;
 }
 
+.dark .subconscious-blind-mode {
+  text-shadow: 0 0 12px rgba(212, 128, 95, 0.55) !important;
+}
+
 /* Ensure selected text is visible even if the textarea text color is transparent */
 textarea::selection {
   background: rgba(192, 105, 78, 0.25) !important;
-  color: var(--color-ink, #2C2A29) !important;
-  -webkit-text-fill-color: var(--color-ink, #2C2A29) !important;
+  color: var(--color-ink) !important;
+  -webkit-text-fill-color: var(--color-ink) !important;
 }
 
 /* Subtle ruled-paper writing surface */
 .paper-lines {
-  background-image: linear-gradient(
-    to bottom,
-    transparent calc(32px - 1px),
-    rgba(192, 105, 78, 0.06) calc(32px - 1px),
-    rgba(192, 105, 78, 0.06) 32px,
-    transparent 32px
-  );
-  background-size: 100% 32px;
+  background-image: none;
+}
+
+.dark .paper-lines {
+  background-image: none;
 }
 
 /* Section card shadow utility */
 .card-warm {
-  box-shadow:
-    0 1px 3px rgba(44, 42, 41, 0.06),
-    0 1px 2px rgba(44, 42, 41, 0.04);
+  box-shadow: var(--shadow-paper-sm);
 }
 
 .card-warm-md {
-  box-shadow:
-    0 4px 12px rgba(44, 42, 41, 0.08),
-    0 1px 4px rgba(44, 42, 41, 0.04);
+  box-shadow: var(--shadow-paper-md);
 }
 
 /* Custom styles for CodeMirror Section Tags and Backup lines */
 .cm-section-tag-line {
   font-weight: bold !important;
-  border-left: 3px solid var(--color-terracotta, #C0694E) !important;
+  border-left: 3px solid var(--color-terracotta) !important;
   padding-left: 29px !important;
   margin-left: -32px !important;
 }
 
 .cm-backup-line {
   font-style: italic !important;
-  color: var(--color-ink-muted, #7A736A) !important;
+  color: var(--color-ink-muted) !important;
   border-left: 2px solid rgba(192, 105, 78, 0.35) !important;
   padding-left: 30px !important;
   margin-left: -32px !important;
+}
+
+.dark .cm-backup-line {
+  border-left-color: rgba(212, 128, 95, 0.35) !important;
 }
 
 /* Mobile overrides */
@@ -155,7 +236,8 @@ textarea::selection {
 }
 
 .radix-overlay {
-  @apply fixed inset-0 bg-ink/10 backdrop-blur-[1px] z-50;
+  @apply fixed inset-0 backdrop-blur-[1px] z-50;
+  background-color: var(--ink-overlay);
   @apply data-[state=open]:animate-[radix-fade-in_200ms_ease-out] data-[state=closed]:animate-[radix-fade-out_150ms_ease-in];
 }
 
@@ -164,5 +246,3 @@ textarea::selection {
   @apply focus:outline-none;
   @apply data-[state=open]:animate-[radix-slide-up_200ms_ease-out] data-[state=closed]:animate-[radix-fade-out_150ms_ease-in];
 }
-
-

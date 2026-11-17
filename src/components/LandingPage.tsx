@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Music, Clock, Cloud, HardDrive, MoreHorizontal } from 'lucide-react';
+import { Plus, Music, Clock, MoreHorizontal } from 'lucide-react';
 import * as ContextMenu from '@radix-ui/react-context-menu';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import * as AlertDialog from '@radix-ui/react-alert-dialog';
 import type { Draft } from '../hooks/useDrafts';
+import { HeaderNav } from './HeaderNav';
 
 interface LandingPageProps {
   drafts: Draft[];
@@ -13,6 +14,8 @@ interface LandingPageProps {
   onCreateDraft: () => void;
   onDeleteDraft: (id: string) => void;
   onRenameDraft: (id: string, newTitle: string) => void;
+  userEmail?: string;
+  onSignOut?: () => void;
 }
 
 function timeAgo(ts: number): string {
@@ -32,12 +35,14 @@ function wordCount(content: string): number {
 
 export const LandingPage: React.FC<LandingPageProps> = ({
   drafts,
-  isCloudMode,
-  healthStatus,
+  isCloudMode: _isCloudMode,
+  healthStatus: _healthStatus,
   onSelectDraft,
   onCreateDraft,
   onDeleteDraft,
   onRenameDraft,
+  userEmail,
+  onSignOut,
 }) => {
   const [renamingDraftId, setRenamingDraftId] = useState<string | null>(null);
   const [renameTitle, setRenameTitle] = useState('');
@@ -75,26 +80,10 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   return (
     <div className="w-screen h-screen bg-paper flex flex-col overflow-hidden select-none">
       {/* Top bar */}
-      <header className="h-12 border-b border-paper-darker flex items-center justify-between px-6 flex-shrink-0 bg-paper">
-        <div className="flex items-center gap-2">
-          <Music className="w-4 h-4 text-terracotta" />
-          <span className="font-extrabold text-terracotta tracking-wider text-sm">Lyrical</span>
-        </div>
-        <div className="flex items-center gap-2">
-          {healthStatus === 'connected' && !isCloudMode ? null : (
-            <span className={`flex items-center gap-1.5 text-[10px] font-mono font-semibold px-2 py-0.5 rounded border ${
-              isCloudMode
-                ? 'bg-[#EDF7F2] border-[#BDE8D4] text-[#2D7A56]'
-                : healthStatus === 'disconnected'
-                ? 'bg-amber-light border-[#F5DDA8] text-amber-DEFAULT'
-                : 'bg-paper-dark border-paper-darker text-ink-muted'
-            }`}>
-              {isCloudMode ? <Cloud className="w-3 h-3" /> : <HardDrive className="w-3 h-3" />}
-              {isCloudMode ? 'Cloud' : healthStatus === 'checking' ? 'Connecting…' : 'Local'}
-            </span>
-          )}
-        </div>
-      </header>
+      <HeaderNav
+        userEmail={userEmail}
+        onSignOut={onSignOut}
+      />
 
       {/* Main content */}
       <main className="flex-1 overflow-y-auto">

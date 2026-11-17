@@ -51,7 +51,7 @@ const gutterCompartment = new Compartment();
 const subconsciousTheme = EditorView.theme({
   ".cm-content": {
     color: "transparent !important",
-    textShadow: "0 0 12px rgba(192, 105, 78, 0.45) !important",
+    textShadow: "0 0 12px color-mix(in srgb, var(--color-terracotta) 45%, transparent) !important",
     caretColor: "transparent !important",
     userSelect: "none !important",
   },
@@ -147,19 +147,19 @@ class SyllableMarker extends GutterMarker {
 
       if (isMismatch) {
         badgeSpan.className += " bg-amber-light text-amber-DEFAULT font-bold";
-        badgeSpan.style.backgroundColor = "#FEF6E4"; // amber-light
-        badgeSpan.style.color = "#C97A1A"; // amber-DEFAULT
+        badgeSpan.style.backgroundColor = "var(--color-amber-light)";
+        badgeSpan.style.color = "var(--color-amber)";
         badgeSpan.innerText = String(count) + " ⚠";
       } else if (isNearMatch) {
         badgeSpan.className += " bg-paper-darker border border-terracotta/20 text-ink font-medium";
-        badgeSpan.style.backgroundColor = "#E4DDD4";
-        badgeSpan.style.border = "1px solid rgba(192, 105, 78, 0.2)";
-        badgeSpan.style.color = "#2C2A29";
+        badgeSpan.style.backgroundColor = "var(--color-paper-darker)";
+        badgeSpan.style.border = "1px solid color-mix(in srgb, var(--color-terracotta) 20%, transparent)";
+        badgeSpan.style.color = "var(--color-ink)";
         badgeSpan.innerText = String(count);
       } else {
         badgeSpan.className += " bg-paper-darker text-ink-muted";
-        badgeSpan.style.backgroundColor = "#E4DDD4";
-        badgeSpan.style.color = "#7A736A";
+        badgeSpan.style.backgroundColor = "var(--color-paper-darker)";
+        badgeSpan.style.color = "var(--color-ink-muted)";
         badgeSpan.innerText = String(count);
       }
 
@@ -427,7 +427,7 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
       backgroundColor: "transparent",
     },
     ".cm-scroller": {
-      fontFamily: "'EB Garamond', Lora, Merriweather, Georgia, serif",
+      fontFamily: '"SF Pro Text", "SF Pro", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
       fontSize: hideGutters ? "12px" : (isMobile ? "15px" : "17px"),
       lineHeight: hideGutters ? "20px" : "32px",
       fontFeatureSettings: '"kern" 1, "liga" 1',
@@ -436,30 +436,30 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
     },
     ".cm-content": {
       padding: hideGutters ? "12px" : (isMobile ? "16px" : "24px 32px"),
-      caretColor: "var(--color-terracotta, #C0694E)",
+      caretColor: "var(--color-terracotta)",
       fontFamily: "inherit",
     },
     "&.cm-focused": {
       outline: "none"
     },
     ".cm-cursor": {
-      borderLeftColor: "var(--color-terracotta, #C0694E)",
+      borderLeftColor: "var(--color-terracotta)",
       borderLeftWidth: "2px"
     },
     ".cm-selectionBackground, ::selection": {
-      backgroundColor: "rgba(192, 105, 78, 0.25) !important",
+      backgroundColor: "color-mix(in srgb, var(--color-terracotta) 25%, transparent) !important",
     },
     ".cm-nativeSelection": {
-      backgroundColor: "rgba(192, 105, 78, 0.25) !important",
+      backgroundColor: "color-mix(in srgb, var(--color-terracotta) 25%, transparent) !important",
     },
     // Gutter styling
     ".cm-gutters": {
-      backgroundColor: "var(--color-paper-dark, #F2EFE9)",
-      borderRight: "1px solid var(--color-paper-darker, #E4DDD4)",
+      backgroundColor: "var(--color-paper-dark)",
+      borderRight: "1px solid var(--color-paper-darker)",
     },
     ".cm-syllable-gutter": {
       width: "64px",
-      backgroundColor: "var(--color-paper-dark, #F2EFE9)",
+      backgroundColor: "var(--color-paper-dark)",
       flexShrink: 0,
       userSelect: "none",
     },
@@ -472,23 +472,23 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
     },
     // Autocomplete dropdown styling
     ".cm-tooltip-autocomplete": {
-      backgroundColor: "var(--color-paper-dark, #F2EFE9) !important",
-      border: "1px solid var(--color-paper-darker, #E4DDD4) !important",
+      backgroundColor: "var(--color-paper-dark) !important",
+      border: "1px solid var(--color-paper-darker) !important",
       borderRadius: "10px !important",
-      boxShadow: "0 4px 16px rgba(44, 42, 41, 0.12) !important",
+      boxShadow: "var(--shadow-paper-md) !important",
       padding: "4px !important",
     },
     ".cm-tooltip-autocomplete ul": {
-      fontFamily: "'EB Garamond', Lora, Merriweather, Georgia, serif !important",
-      fontSize: "15px !important",
+      fontFamily: '"SF Pro Text", "SF Pro", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important',
+      fontSize: "14px !important",
     },
     ".cm-tooltip-autocomplete ul li": {
       padding: "4px 10px !important",
       borderRadius: "6px !important",
     },
     ".cm-tooltip-autocomplete ul li[aria-selected]": {
-      backgroundColor: "rgba(192, 105, 78, 0.15) !important",
-      color: "var(--color-terracotta, #C0694E) !important",
+      backgroundColor: "color-mix(in srgb, var(--color-terracotta) 15%, transparent) !important",
+      color: "var(--color-terracotta) !important",
       fontWeight: "bold !important",
     }
   });
@@ -729,6 +729,11 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
 
   // Autocompletion source powered by Google Input Tools (ml-t-i0-und) & Malayalam Song Thesaurus
   const malayalamCompletionSource = async (context: CompletionContext): Promise<CompletionResult | null> => {
+    // Only provide suggestions if Manglish mode is explicitly active
+    if (!latestRef.current.manglishActive) {
+      return null;
+    }
+
     // A. Check for Latin / Manglish word before cursor
     const latinWord = context.matchBefore(/[a-zA-Z]+/);
     if (latinWord && (latinWord.from < latinWord.to || context.explicit)) {
@@ -1291,8 +1296,8 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
           style={{
             top: `${contextCoords.top + 200 > window.innerHeight ? contextCoords.top - 200 : contextCoords.top}px`,
             left: `${contextCoords.left}px`,
-            backgroundColor: 'var(--color-paper, #FAF8F5)',
-            borderColor: 'var(--color-paper-darker, #E4DDD4)'
+            backgroundColor: 'var(--color-paper)',
+            borderColor: 'var(--color-paper-darker)'
           }}
           onClick={(e) => e.stopPropagation()}
         >
@@ -1308,7 +1313,7 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
               </button>
             );
           })()}
-          <div className="border-t border-paper-darker my-1" style={{ borderColor: 'var(--color-paper-darker, #E4DDD4)' }} />
+          <div className="border-t border-paper-darker my-1" style={{ borderColor: 'var(--color-paper-darker)' }} />
           <button
             className="w-full text-left px-3 py-1.5 text-xs text-ink hover:bg-paper-active transition cursor-pointer flex items-center justify-between"
             onClick={handleCut}
@@ -1337,7 +1342,7 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
             <span>Move to Graveyard</span>
             <span className="text-[10px] text-ink-light font-mono">Ctrl+B</span>
           </button>
-          <div className="border-t border-paper-darker my-1" style={{ borderColor: 'var(--color-paper-darker, #E4DDD4)' }} />
+          <div className="border-t border-paper-darker my-1" style={{ borderColor: 'var(--color-paper-darker)' }} />
           <button
             className="w-full text-left px-3 py-1.5 text-xs text-ink hover:bg-paper-active transition cursor-pointer flex items-center justify-between"
             onClick={() => {
@@ -1372,8 +1377,8 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
           <div
             className="bg-paper border border-paper-darker rounded-xl p-6 w-80 flex flex-col gap-4 shadow-paper-md"
             style={{
-              backgroundColor: 'var(--color-paper, #FAF8F5)',
-              borderColor: 'var(--color-paper-darker, #E4DDD4)'
+              backgroundColor: 'var(--color-paper)',
+              borderColor: 'var(--color-paper-darker)'
             }}
             onClick={(e) => e.stopPropagation()}
           >
@@ -1386,8 +1391,8 @@ export const HighlightingTextarea = React.forwardRef<HTMLTextAreaElement, Highli
               placeholder="Filename"
               className="w-full bg-paper-dark border border-paper-darker rounded px-2.5 py-1.5 text-xs text-ink focus:outline-none focus:border-terracotta transition"
               style={{
-                backgroundColor: 'var(--color-paper-dark, #F2EFE9)',
-                borderColor: 'var(--color-paper-darker, #E4DDD4)'
+                backgroundColor: 'var(--color-paper-dark)',
+                borderColor: 'var(--color-paper-darker)'
               }}
               autoFocus
             />

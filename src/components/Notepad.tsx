@@ -295,7 +295,7 @@ export const Notepad: React.FC<NotepadProps> = ({
 
 
   return (
-    <div className="flex-1 h-full bg-paper paper-lines flex flex-col min-w-0" onClick={focusEditor}>
+    <div className="flex-1 h-full bg-paper flex flex-col min-w-0" onClick={focusEditor}>
       {/* Subconscious & Share Mode Control */}
       <div
         className={`${isMobile ? 'px-4 py-2' : 'px-8 py-3'} bg-paper border-b border-paper-darker flex items-center justify-end gap-4 select-none flex-shrink-0 relative`}

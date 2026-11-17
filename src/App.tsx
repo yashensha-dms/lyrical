@@ -6,6 +6,7 @@ import { Notepad } from './components/Notepad';
 import { StatusBar } from './components/StatusBar';
 import { MobileLayout } from './components/MobileLayout';
 import { LandingPage } from './components/LandingPage';
+import { HeaderNav } from './components/HeaderNav';
 import { useDrafts } from './hooks/useDrafts';
 import { useIsMobile } from './hooks/useIsMobile';
 import { useRoute } from './hooks/useRoute';
@@ -229,6 +230,8 @@ function App() {
           onCreateDraft={() => handleCreateDraft()}
           onDeleteDraft={handleDeleteDraft}
           onRenameDraft={renameDraft}
+          userEmail={session?.user?.email}
+          onSignOut={() => api.auth.signOut()}
         />
       );
     }
@@ -265,6 +268,8 @@ function App() {
         onCreateDraft={() => handleCreateDraft()}
         onDeleteDraft={handleDeleteDraft}
         onRenameDraft={renameDraft}
+        userEmail={session?.user?.email}
+        onSignOut={() => api.auth.signOut()}
       />
     );
   }
@@ -274,35 +279,13 @@ function App() {
     <div className="w-screen h-screen flex flex-col bg-paper text-ink font-sans select-none overflow-hidden">
 
       {/* Top Application Header */}
-      <header className={`h-10 w-full bg-paper border-b border-paper-darker flex items-center justify-between px-4 select-none flex-shrink-0 transition-all duration-500 ${
-        subconsciousActive ? 'opacity-10 pointer-events-none' : ''
-      }`}>
-        {/* Left: Logo + back to home */}
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => navigate('/')}
-            className="font-extrabold text-terracotta tracking-wider text-base hover:text-terracotta-hover transition cursor-pointer"
-            title="All Songs"
-          >
-            Lyrical
-          </button>
-          <span className="text-[10px] bg-paper-dark border border-paper-darker text-ink-muted px-1.5 py-0.5 rounded font-mono font-medium">
-            {activeDraft?.title || 'Untitled Song'}
-          </span>
-        </div>
-
-        {/* Right: User + Sign Out */}
-        <div className="flex items-center gap-3">
-          <span className="text-[11px] text-ink-muted hidden sm:inline">{session?.user?.email}</span>
-          <button
-            onClick={() => api.auth.signOut()}
-            className="text-[10px] uppercase font-bold text-ink-muted hover:text-terracotta transition border border-paper-darker hover:border-terracotta/30 px-2 py-1 rounded bg-paper-dark cursor-pointer focus:outline-none"
-          >
-            Sign Out
-          </button>
-        </div>
-
-      </header>
+      <HeaderNav
+        title={activeDraft?.title || 'Untitled Song'}
+        userEmail={session?.user?.email}
+        onSignOut={() => api.auth.signOut()}
+        onLogoClick={() => navigate('/')}
+        subconsciousActive={subconsciousActive}
+      />
 
 
       {/* Main Workspace Area */}
@@ -396,7 +379,7 @@ function App() {
             </div>
           </>
         ) : (
-          <div className="flex-1 h-full bg-paper paper-lines flex items-center justify-center text-ink-light">
+          <div className="flex-1 h-full bg-paper flex items-center justify-center text-ink-light">
             <span className="font-serif italic text-sm">Loading workspace...</span>
           </div>
         )}

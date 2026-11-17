@@ -31,8 +31,8 @@ export const VoiceMemoCard: React.FC<VoiceMemoCardProps> = ({
   const { wavesurfer } = useWavesurfer({
     container: containerRef,
     url: memo.audio_url,
-    waveColor: '#D3C9C0', // Warm ink-light / paper-darker color
-    progressColor: '#C0694E', // Terracotta progress color
+    waveColor: 'var(--color-paper-darker)',
+    progressColor: 'var(--color-terracotta)',
     height: 36,
     barWidth: 2,
     barGap: 3,
